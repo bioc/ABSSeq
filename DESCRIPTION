@@ -1,0 +1,18 @@
+Package: ABSSeq
+Type: Package
+Title: ABSSeq: a new RNA-Seq analysis method based on absolute
+        expression differences and generalized Poisson model
+Version: 0.99.1
+Author: Wentao Yang
+Maintainer: Wentao Yang <wyang@zoologie.uni-kiel.de>
+Description: Inferring differential expression genes by absolute
+        expression differences between two groups, utilizing
+        generalized Poisson model to account for over-dispersion across
+        samples and heterogeneity of differential expression across
+        genes.
+License: GPL (>= 3)
+biocViews: DifferentialExpression
+Imports: Rcpp
+Depends: R (>= 2.10), methods
+Suggests:
+LinkingTo: Rcpp
