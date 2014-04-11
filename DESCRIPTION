@@ -2,7 +2,7 @@ Package: ABSSeq
 Type: Package
 Title: ABSSeq: a new RNA-Seq analysis method based on absolute
         expression differences and generalized Poisson model
-Version: 0.99.1
+Version: 1.0.0
 Author: Wentao Yang
 Maintainer: Wentao Yang <wyang@zoologie.uni-kiel.de>
 Description: Inferring differential expression genes by absolute
