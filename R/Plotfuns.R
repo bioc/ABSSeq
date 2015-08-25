@@ -3,51 +3,39 @@
 #' Plot absolute differencs against expression levels
 #' and mark the gene with a color at a given cutoff of fold-change
 #'
-#' @title Plot absolute differencs
+#' @title Plot absolute log2 fold-change against base mean of expression
 #' @param object a ABSDataSet
-#' @param fcut the cutoff of fold-change
-#' @param cols the colors to mark the genes which greater or less than fcut
-#' @param xlab xlab
-#' @param ylab ylab
-#' @param pch pch
-#' @param ... further arguments to \code{plot}
+#' @param foldname indicates kind of fold-change in plotting, default is 'foldChange', see \code{results}
+#' @param adj.pcut cutoff for differential expressed genes, marked by different color, default is 0.05
+#' @param cols the colors to mark the non-DE and DE genes, defualt is black and red, respectively
+#' @param xlab xlab, default is 'log2 of Expression level'
+#' @param ylab ylab, default is 'log2 fold-change'
+#' @param pch pch, default is 16
+#' @param ..., further arguments to \code{plot}
 #'
 #' @examples
 #' 
 #' data(simuN5)
 #' obj <- ABSDataSet(counts=simuN5$counts, groups=factor(simuN5$groups))
-#' obj <- normalized(obj)
+#' obj <- ABSSeq(obj)
 #' plotDifftoBase(obj)
 #' 
 #' @export
-plotDifftoBase = function( object, cols = c("black","red"), fcut = 1.5, pch=16, xlab = "Expression level",ylab = "ABS diffs", ...)
+plotDifftoBase = function(object,foldname="foldChange", adj.pcut=0.05, cols = c("black","red"),pch=16, xlab = "log2 of Expression level",ylab = "log2 fold-change", ...)
 { 
   if(!is(object,"ABSDataSet"))
   {
     stop("input is not an ABSDataSet object!")
   }
-  if(fcut<=0)
+  if(length(cols)!=2)
   {
-   stop("fcut is not positive!")
+    stop("Please provide two colors!")
   }
-  dx=object[["baseMean"]]
-  dy=object[["absD"]]
-  dfold=object[["foldChange"]]
-  if(length(dy)!=length(dx))
+  if(is.null(object[["Amean"]]) || is.null(object[["Bmean"]]) || is.null(object[[foldname]]) || is.null(object[[foldname]]) )
   {
-   stop("the lengths of dmean and baseMean are not equal!")
+    stop("Please run ABSSeq firstly!")
   }
-  dy=dy[dx>0]
-  dfold=dfold[dx>0]
-  dx=dx[dx>0]
-  iso.reg <- isoreg(dx, dy)
-
-  plot(dx, dy, xlab=xlab, ylab=ylab, pch=16, col=cols[(dfold>log2(fcut))+1], ...)
-  
-  lines(iso.reg,
-        col= 'gray19',
-        pch=10,
-        do.points=TRUE,
-        lwd=.5, cex=.5
-       )
+  ccols <- rep(cols[1],length(object[["Amean"]]))
+  ccols[object[["adj.pvalue"]]<adj.pcut] <- cols[2]
+  plot((object[["Amean"]]+object[["Bmean"]])/2,object[[foldname]],col=ccols,pch=pch, xlab=xlab, ylab=ylab,...)
 }

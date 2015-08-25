@@ -1,5 +1,5 @@
 citEntry(entry="Unpublished",
-         title = "ABSSeq: a new RNA-Seq analysis method based on absolute expression differences and generalized Poisson model",
+         title = "ABSSeq: a new RNA-Seq analysis method based on modelling absolute expression differences",
          author = personList( as.person("Wentao Yang"), 
          		      as.person("Philip Rosenstiel"),
                               as.person("Hinrich Schulenburg")),
@@ -7,6 +7,6 @@ citEntry(entry="Unpublished",
          note = "It will be submmited",     
          textVersion = 
          paste("Wentao Yang, Philip Rosenstiel and Hinrich Schulenburg:", 
-               "ABSSeq: a new RNA-Seq analysis method based on absolute expression differences and generalized Poisson model",
+               "ABSSeq: a new RNA-Seq analysis method based on modelling absolute expression differences",
                 "" ) )
 

@@ -1,7 +1,7 @@
 setClass("SumInfo",representation(begins = "POSIXct",ends= "POSIXct"),contains = "environment")
 setMethod("[[<-", c("SumInfo","character","missing"),
    function(x, i,j,..., value) { 
-      cnames=c("baseMean","Amean","Bmean","absD","foldChange","Variance","pvalue","adj.pvalue")
+      cnames <- c("baseMean","Amean","Bmean","absD","foldChange","rawFC","lowFC","Variance","priors","pvalue","adj.pvalue","m1","mults","trimmed","preab","mts")
       if(!i %in% cnames)
       {
        stop( "Can't have an element in this name!" )
@@ -15,18 +15,19 @@ setMethod("[[<-", c("SumInfo","character","missing"),
        x@ends <- Sys.time() # the update time
        x})
 
-setClass("ABSDataSet", representation(counts = "matrix", groups = "factor",normMethod="character",sizeFactor="numeric"),contains="SumInfo")
+setClass("ABSDataSet", representation(counts = "matrix",excounts = "matrix" ,groups = "factor",normMethod="character",sizeFactor="numeric",minDispersion="numeric"
+                                      ,minRates="numeric",maxRates="numeric",LevelstoNormFC="numeric"),contains="SumInfo")
 
 setValidity( "ABSDataSet", function( object ) {
-  if( any( is.na(counts(object))) )
+  if( any( is.na(counts(object))) || any( is.na(excounts(object))))
     return( "the count data contains NA values" )
-  if( any( is.infinite(counts(object)) ) )
+  if( any( is.infinite(counts(object)) ) || any( is.infinite(excounts(object)) ) )
     return( "the count data contains infinite values" )
-  if( any( !is.numeric(counts(object)) ) )
+  if( any( !is.numeric(counts(object)) ) || any( !is.numeric(excounts(object)) ) )
     return( "the count data contains non-numeric values" )
-  if( any(round(counts(object))!= counts(object)) )
-    return( "the count data is not in integer mode" )
-  if( any( counts(object) < 0 ) )
+#  if( any(round(counts(object))!= counts(object)) )
+#    return( "the count data is not in integer mode" )
+  if( any( counts(object) < 0 ) || any( excounts(object) < 0 ) )
     return( "the count data contains negative values" )
 
   ngroup=unique(object@groups)
@@ -34,17 +35,34 @@ setValidity( "ABSDataSet", function( object ) {
   {
    return("the number of group is not equal with 2!")
   }
+  if(object@maxRates>=1.0 || object@maxRates<=0.0)
+  {
+    return("'maxRates' is bigger than 1 or less than 0!") 
+  }
+  if(object@minRates>=1 || object@minRates<=0 || object@minRates>object@maxRates)
+  {
+    return("'minRates' is bigger than 1 or less than 0 or bigger than 'maxRates'!") 
+  }
+  if(object@LevelstoNormFC<=0)
+  {
+    return("'LevelstoNormFC' is less than 0!") 
+  }
+  if(length(object@minDispersion)>0 && object@minDispersion < 0)
+  {
+    return("'minDispersion' is less than 0!")
+  }
   if(ncol(object@counts)!=length(object@groups))
   {
    return("the col number of counts table is not equal with length of groups!")
   }
-  if(length(object@normMethod) !=1 || !object@normMethod %in% c("User","total","quartile","DESeq"))
+  if(length(object@normMethod) !=1 || !object@normMethod %in% c("user","total","quartile","geometric"))
   {
-     return("Please choose one of the normalization methods as below: 'User', 'total', 'quartile' and 'DESeq'!")
+     return("Please choose one of the normalization methods as below: 'user', 'total', 'quartile' and 'geometric'!")
   } 
-  if(object@normMethod =="User" && (any(is.na(object@sizeFactor)) || length(object@sizeFactor)!= length(object@groups) || any(is.infinite(object@sizeFactor)) || any(object@sizeFactor<0) ))
+  if(object@normMethod =="user" && (any(is.na(object@sizeFactor)) || length(object@sizeFactor)!= length(object@groups) || any(is.infinite(object@sizeFactor)) || any(object@sizeFactor<0) ))
   {
-     return("Please provide right size factors for each sample if you choose 'User' as normalization method!")
+   
+     return("Please provide right size factors for each sample if you choose 'user' as normalization method!")
   } 
   TRUE
 } )
@@ -59,8 +77,12 @@ setValidity( "ABSDataSet", function( object ) {
 #' @title ABSDataSet object
 #' @param counts a matrix or table with at least two columns and one row,
 #' @param groups a factor with two groups, whose length should be equal  with sample size
-#' @param normMethod method for estimating the size factors, should be one of 'User', 'total', 'quartile' and 'DESeq'. See \code{normalFactor} for description.
-#' @param sfactors size factors for 'User' method, self-defined size factors by user.
+#' @param normMethod method for estimating the size factors, should be one of 'user', 'total', 'quartile' and 'geometric'. See \code{\link{normalFactors}} for description.
+#' @param sizeFactor ize factors for 'user' method, self-defined size factors by user.
+#' @param minDispersion a positive double for user-defined penalty of dispersion estimation
+#' @param minRates low bounder rate of baseline estimation for counts difference, default is 0.1
+#' @param maxRates up bounder rate of baseline estimation for counts difference, default is 0.3. Setting minRates equal with maxRates will result in a testing on user-define rate, 
+#' @param LevelstoNormFC maximal level of average standard deviation in fold-change normalization according to expression level, default is 100.
 #'
 #' @return A ABSDataSet object.
 #' 
@@ -73,24 +95,31 @@ setValidity( "ABSDataSet", function( object ) {
 #' groups <- factor(c("a","b"))
 #' obj <- ABSDataSet(counts, groups)
 #' @export
-ABSDataSet <- function(counts, groups, normMethod=c("User","total","quartile","DESeq"),sfactors=0) {
+ABSDataSet <- function(counts, groups, normMethod=c("user","total","quartile","geometric"),sizeFactor=0,minDispersion=NULL,minRates=0.1,maxRates=0.3,LevelstoNormFC=100) {
   if (is.null(dim(counts))) {
       stop("'counts' is not like a matrix or a table!")
     }
   if(length(normMethod)!=1)
   {
-     normMethod="quartile"
-  } 
-  if(!normMethod %in% c("User","total","quartile","DESeq"))
+     normMethod <- "quartile"
+  }
+  if(!normMethod %in% c("user","total","quartile","geometric"))
   {
-     stop("Please use one of the normalization methods as below: 'User', 'total', 'quartile' and 'DESeq'!")
+     stop("Please use one of the normalization methods as below: 'user', 'total', 'quartile' and 'geometric'!")
   } 
-  if(normMethod=="User")
+  if(normMethod=="user")
   {
-    obj=new("ABSDataSet",counts=as.matrix(counts),groups=as.factor(groups),normMethod=normMethod,sizeFactor=sfactors,begins=Sys.time(),ends=Sys.time())
+    obj=new("ABSDataSet",counts=as.matrix(counts),groups=as.factor(groups),
+            minRates=minRates,maxRates=maxRates,LevelstoNormFC=LevelstoNormFC,normMethod=normMethod,sizeFactor=sizeFactor,begins=Sys.time(),ends=Sys.time())
   }else
   {
-    obj=new("ABSDataSet",counts=as.matrix(counts),groups=as.factor(groups),normMethod=normMethod,begins=Sys.time(),ends=Sys.time())
+    obj=new("ABSDataSet",counts=as.matrix(counts),groups=as.factor(groups),
+            minRates=minRates,maxRates=maxRates,LevelstoNormFC=LevelstoNormFC,normMethod=normMethod,begins=Sys.time(),ends=Sys.time())
   }
+  if(!is.null(minDispersion))
+  {
+    obj@minDispersion <- minDispersion
+  }
+    
   return(obj)
 }

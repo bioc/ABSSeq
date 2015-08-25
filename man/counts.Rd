@@ -11,7 +11,7 @@ count values, rows and columns for genes and samples, respectively.}
 \alias{counts<-}
 \alias{counts,ABSDataSet-method}
 \alias{counts<-,ABSDataSet,matrix-method}
-\seealso{\code{\link{sizeFactors}}, \code{\link{normalFactors}}}
+\seealso{\code{\link{sFactors}}, \code{\link{normalFactors}}}
 \arguments{\item{object}{a \code{ABSDataSet} object.}
 \item{norm}{logical indicating whether or not to normalize the counts before returning}
 \item{value}{an numeric matrix}}

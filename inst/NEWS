@@ -1,1 +1,6 @@
-This is the first version of ABSSeq. It will be updated in future.
+2015-08-24
+This is the second version of ABSSeq.
+1) Use NB distribution insead of GP to model the counts difference between conditions
+2) Introduce an efficient outlier detection method: moderated MAD
+3) Introduce penalty for dispersion estimation
+4) Provide moderation of log2 fold-change at expression level and gene-specific dispersion
