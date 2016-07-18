@@ -1,0 +1,18 @@
+citEntry(entry="article",
+         title = "ABSSeq: a new RNA-Seq analysis method based on modelling absolute expression differences",
+         author = personList( as.person("Wentao Yang"), 
+         		      as.person("Philip Rosenstiel"),
+                              as.person("Hinrich Schulenburg")),
+         year = 2016,
+         journal = "BMC Genomics",
+         volume = "",
+         pages = "",
+         doi = "",
+         url = "",
+         note="in press",
+             
+         textVersion = 
+         paste("Wentao Yang, Philip Rosenstiel and Hinrich Schulenburg:", 
+               "ABSSeq: a new RNA-Seq analysis method based on modelling absolute expression differences",
+                "BMC Genomics in press" ) )
+
