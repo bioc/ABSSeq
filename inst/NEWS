@@ -1,3 +1,9 @@
+2017-02-14
+Updating! Adding new method: aFold to call DE via fold-change
+
+2016-02-29
+Updating! Enable the paired comparison by seting up 'paired' parameter in 'ABSDataSet' object
+
 2015-08-24
 This is the second version of ABSSeq.
 1) Use NB distribution insead of GP to model the counts difference between conditions

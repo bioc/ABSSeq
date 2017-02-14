@@ -22,6 +22,16 @@ setGeneric("sFactors", function(object) standardGeneric("sFactors"))
 #' @export
 setGeneric("sFactors<-", function(object, value) standardGeneric("sFactors<-"))
 
+#' @rdname paired
+#' @export
+setGeneric("paired", function(object) standardGeneric("paired"))
+
+#' @rdname paired
+#' @export
+setGeneric("paired<-", function(object, value) standardGeneric("paired<-"))
+
+
+
 #' @rdname results
 #' @export
 setGeneric("results", function(object,...) standardGeneric("results"))

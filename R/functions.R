@@ -9,6 +9,7 @@
 #' @param object an \code{\link{ABSDataSet}} object, contains the reads count matrix, groups and normalization method.
 #' @param replaceOutliers default is TRUE, switch for outlier replacement.
 #' @param adjmethod defualt is 'BH', method for p-value adjusted, see \code{\link{p.adjust.methods}} for details
+#' @param useaFold defualt is FALSE, switch for DE detection through fold-change, see \code{\link{callDEs}} for details
 #' @param quiet default is FALSE, whether to print messages at each step
 #' @param ... parameters passed to \code{\link{ReplaceOutliersByMAD}} from \code{\link{callParameter}}
 #' @return an ABSDataSet object with additional elements, which can be retrieved by \code{\link{results}}:
@@ -28,7 +29,7 @@
 #' res <- results(obj,c("Amean","Bmean","foldChange","pvalue","adj.pvalue"))
 #' head(res)
 #' @export
-ABSSeq <- function(object,adjmethod="BH",replaceOutliers=TRUE,quiet=FALSE,...) {
+ABSSeq <- function(object,adjmethod="BH", replaceOutliers=TRUE, useaFold=FALSE, quiet=FALSE,...) {
   if (!quiet) message("eistimating size factors....")
   object <- normalFactors(object)
   if (!quiet) message("calculating parameters and fitting....")
@@ -36,11 +37,12 @@ ABSSeq <- function(object,adjmethod="BH",replaceOutliers=TRUE,quiet=FALSE,...) {
   {
     message("No replicates! switch to 'callParameterwithoutReplicates'!")
     object <- callParameterwithoutReplicates(object)
+    useaFold <- FALSE
   }
   else
     object <- callParameter(object,replaceOutliers,...)
   if (!quiet) message("Calling p-value and adjusted it....")
-  object <- callDEs(object, adjmethod)
+  object <- callDEs(object, adjmethod,useaFold)
   return(object)
 }
 #' This function is borrowed from DESeq.
@@ -114,8 +116,19 @@ normalFactors <- function(object){
     }
     sizefactor=apply(object@counts,2,rowQuar)
   }
+  if (method == "qtotal") {
+    rowQuar=function(z) {
+      x <- (z[z > 0])
+      y <- mean(x[x<=quantile(x,0.25)])
+      zz <- sum(x)
+      y/zz
+    }
+    sizefactor <- colSums(object@counts)
+    rate <- apply(object@counts,2,rowQuar)
+    sizefactor <- sizefactor*rate/mean(rate)
+  }
   if (method == "geometric") {
-    sizefactor=estimateSizeFactorsForMatrix(object@counts)
+    sizefactor <- estimateSizeFactorsForMatrix(object@counts)
   }
   if (method == "user") {
     sizefactor=object@sizeFactor
@@ -328,6 +341,7 @@ callParameterwithoutReplicates <- function(object) {
   object[["Amean"]] <- ncounts[,gr1]
   object[["Bmean"]] <- ncounts[,gr2]
   object[["rawFC"]] <- object[["Bmean"]]-object[["Amean"]]
+  object[["lowFC"]] <- object[["Bmean"]]-object[["Amean"]]
   trimmed <- rep(0,nrow(ncounts))
   object[["trimmed"]] <- trimmed
   lvar <- apply(ncounts,1,sd)
@@ -400,7 +414,7 @@ callParameterwithoutReplicates <- function(object) {
   a[a==0] <- 1
   preabs <- predict(ab1,log2(a))
   baseadd <- sqrt((a+a^2*preabs^2)*LevelstoNormFC(object)/a)
-  
+
   ###shift counts and recalculate the mean and variances
   ncounts <- (nncounts+baseadd)
   
@@ -430,15 +444,243 @@ callParameterwithoutReplicates <- function(object) {
   object[["preab"]] <- Mmax
   return(object)
 }
+#' Calculate baseline and penalty for uncertainty
+#' 
+#' 
+#' Called by \code{\link{genAFold}}
+#'
+#' @param svar pooled variance of read count.
+#' @param smean pooled mean of read count.
+#' @param amean mean of group A.
+#' @param bmean mean of group B.
+#' @param unct observed uncertainty
+#' @param tsize sample size
+#' @param preval pre-defined uncertainty level as control to penalize absolute count difference, default is 0.05.
+#'
+#' @return A list object with penalty of uncertainty, baseline uncertainty for group A and B, basemean
+#' 
+#' @title Calculate parameters for differential expression test base on absolute counts differences
+#' @note Not available for user.
+#' @examples
+#'
+#' data(simuN5)
+#' obj <- ABSDataSet(counts=simuN5$counts, groups=factor(simuN5$groups))
+#' obj <- normalFactors(obj)
+#' obj <- callParameter(obj)
+#' head(results(obj,c("foldChange","absD","baseMean")))
+#' plotDifftoBase(obj)
+#'
+preAFold <- function(svar,smean,amean,bmean,unct,tsize,preval=0.05) {
+  ind <-  smean>=1
+  AAvar <- svar[ind]
+  unctotl <- unct[ind]
+  AAmean <- smean[ind]
 
+  sy <- sqrt(AAvar)/AAmean
+  sx=log(AAmean)
+  
+  apra <- 0
+  abase <- 0
+  bbase <- 0
+  amin <- 1
+  amean <-pmax(amean,amin)
+  bmean <-pmax(bmean,amin)
+  absd <- pmax(abs(amean-bmean),amin)
+  ##baseline
+  ind <- sy>0
+  if(sum(ind)>0)
+  {
+    prea <- locfit(sy~lp(sx,deg=1,scale=F,nn=.5),family="gamma")
+    abase <- predict(prea,log(amean))*amean
+    bbase <- predict(prea,log(bmean))*bmean
+  }else
+  {
+    message("All variances are zero! Use Poisson as default!")
+    abase <- sqrt(amean)
+    bbase <- sqrt(bmean)
+  }
 
-#' Calculate parameters for each gene (the moderating basemean and dispersions)
+  ##penalty
+  sy <- sqrt(AAmean)/(AAmean+sqrt(tsize)*unctotl)
+  ind <- unctotl>0
+  if(sum(ind)>0)
+  {
+    prea <- locfit(sy~lp(sx,deg=1,scale=F,nn=.5),family="gamma")
+    apra <- predict(prea,log(absd))
+  }else
+  {
+
+    apra <- 1/sqrt(absd)
+  }
+  apra <- pmax(apra/preval-1,0)*absd*2
+ 
+  return(list(apra,abase,bbase))
+}
+#' Calculate aFold for each gene and general sd
+#' 
+#' 
+#' shifted and calculate a set of parameters from normalized counts table before \code{\link{callDEs}}
+#'
+#' @param nncounts matrix for read count.
+#' @param cond factor for condition.
+#' @param preval pre-defined uncertainty level as control to penalize absolute count difference, default is 0.05.
+#' @param qforGeneralSD quantile for estimating general SD of fold-change, default is 0.75.
+#'
+#' @return A list with log2 foldchange and general SD for calculating pvalue
+#' 
+#' @title Calculate parameters for differential expression test base on absolute counts differences
+#' @note This function should run after \code{\link{normalFactors}}.
+#' @examples
+#'
+#' data(simuN5)
+#' obj <- ABSDataSet(counts=simuN5$counts, groups=factor(simuN5$groups))
+#' mtx <- counts(obj,TRUE)
+#' aFold <- genAFold(mtx,factor(simuN5$groups))
+#' hist(aFold[[1]])
+#'
+#' @export
+genAFold <- function(nncounts,cond,preval=0.05,qforGeneralSD=0.75) {
+  igroups <- cond
+  ngr1 <- igroups[1]
+  ngr2 <- igroups[igroups!=igroups[1]][1]
+  gr1 <- igroups==ngr1
+  gr2 <- igroups==ngr2
+  n1 <- sum(igroups==ngr1)
+  n2 <- sum(igroups==ngr2)
+  if(n1<2 &&n2<2)
+  {
+    message("No replicates! Use Poisson as default!")
+  }
+  AAmean <- 0
+  AAvar <- 0
+  ind <- rowSums(nncounts)>0
+  tmean <- c()
+  tvar <- 0
+  if(n1==1) AAmean <- nncounts[,gr1]
+  else
+  {
+    AAmean <- apply(nncounts[,gr1],1,mean)
+    AAvar <- apply(nncounts[,gr1],1,var)
+    if(all(AAvar==0)) message("sample identical to each other in group 1")
+  }
+ 
+  BBmean <- 0
+  BBvar <- 0
+  if(n2==1) BBmean <- nncounts[,gr2]
+  else
+  {
+    BBmean <- apply(nncounts[,gr2],1,mean)
+    BBvar <- apply(nncounts[,gr2],1,var)
+    if(all(BBvar==0)) message("sample identical to each other in group 2")
+  }
+ 
+  ##observed
+  varunca <- 0
+  varuncb <- 0
+  varuncc <- 0
+  asiz <- sqrt(AAvar)/AAmean
+  asiz[AAmean<=0]<-0
+  varunca <- sqrt(AAvar)*(1+asiz)
+  bsiz <- sqrt(BBvar)/BBmean
+  bsiz[BBmean<=0]<-0
+  varuncb <- sqrt(BBvar)*(1+bsiz)
+  if(n1==1 &&n2>1) {
+    tmean <- BBmean[ind]
+    tvar <- BBvar[ind]
+    varuncc <- varuncb[ind]
+  }else if(n1>1 &&n2==1)
+  {
+    tmean <- AAmean[ind]
+    tvar <- AAvar[ind]
+    varuncc <- varunca[ind]
+  }else
+  {
+    tmean <- AAmean[ind]
+    tmean <- c(tmean,BBmean[ind])
+    tvar <- AAvar[ind]
+    tvar <- c(tvar,BBvar[ind])
+    varuncc <- c(varunca[ind],varuncb[ind])
+  }
+  if(n1==1&&n2==1) tvar <- 0
+
+  ##baseline and penalty
+  rat <- preAFold(pmax(tvar,tmean),tmean,AAmean,BBmean,varuncc,max(n1,n2),preval)
+
+  varunc <- pmax(varunca,rat[[2]])+pmax(varuncb,rat[[3]])+rat[[1]]
+  totunc <- pmax(varunc,1.0e-9)
+  scounts <- nncounts+totunc
+  scounts <- log2(scounts)
+  logAmean <- 0
+  logAsd <- NULL
+  precut <- preval*sqrt(max(n1,n2))
+  if(n1==1) logAmean <- scounts[,gr1]
+  else
+  {
+    logAsd <- apply(scounts[,gr1],1,sd)
+    logAmean <- apply(scounts[,gr1],1,mean)
+    ind <- logAmean>quantile(logAmean,qforGeneralSD)&logAsd>precut
+    if(sum(ind)>0) logAsd <- logAsd[ind]
+    else logAsd <- rep(precut,length(logAmean))
+  }
+  
+  logBmean <- 0
+  logBsd <- NULL
+  if(n2==1) logBmean <- scounts[,gr2]
+  else
+  {
+    logBsd <- apply(scounts[,gr2],1,sd)
+    logBmean <- apply(scounts[,gr2],1,mean)
+    ind <- logBmean>quantile(logBmean,qforGeneralSD)&logBsd>precut
+    if(sum(ind)>0) logBsd <- logBsd[ind]
+    else logBsd <- rep(precut,length(logBmean))
+  }
+  #final fold-change
+  fold <- (logBmean-logAmean)
+  # estimate general SD
+  genSDA <- 0
+  genSDB <- 0
+  Ava <- 0
+  Bva <- 0
+  Ame <- 0
+  Bme <- 0
+  if(!is.null(logAsd)) {
+    Ava <- var(logAsd)
+    Ame <- mean(logAsd)
+  }
+  if(!is.null(logBsd))
+  {
+    Bme <- mean(logBsd)
+    Bva <- var(logBsd)
+  }
+  
+  #qforGeneralSD <- rate[[5]]
+
+  #as quantile function
+  genesd <- 0.1*sqrt(2)#as Poisson distribution
+  if(!(Ame==0 &&Bme==0))
+  {
+    if(Ame==0) genSDA <- 0
+    else if(Ava==0) genSDA <- Ame
+    else genSDA <- mean(logAsd)/sqrt(n1-1)
+    if(Bme==0) genSDB <- 0
+    else if(Bva==0) genSDB <- Bme
+    else genSDB <- mean(logBsd)/sqrt(n2-1)
+    if(Ame==0) genSDA <- genSDB
+    if(Bme==0) genSDB <- genSDA
+    genesd <- sqrt(genSDA^2+genSDB^2+preval^2/max(n1-1,1)+preval^2/max(n2-1,1))
+
+  }
+  message(genesd)
+  return(list(aFold=fold,geneSD=genesd,nncounts+totunc))
+}
+#' Calculate parameters for each gene (the moderating basemean, dispersions, moderated fold-change and general sd)
 #' 
 #' 
 #' shifted and calculate a set of parameters from normalized counts table before \code{\link{callDEs}}
 #'
 #' @param object a \code{\link{ABSDataSet}} object.
 #' @param replaceOutliers switch for outlier replacement, default is TRUE.
+#' @param qforGeneralSD quantile for estimating general SD of fold-change, default is 0.75.
 #' @param ... parameters past to \code{\link{ReplaceOutliersByMAD}}
 #'
 #' @return A ABSDataSet object with absolute differences, basemean, mean of each group, variance, 
@@ -457,10 +699,14 @@ callParameterwithoutReplicates <- function(object) {
 #' plotDifftoBase(obj)
 #'
 #' @export
-callParameter <- function(object,replaceOutliers=TRUE,...) {
+callParameter <- function(object,replaceOutliers=TRUE, qforGeneralSD=0.75,...) {
   if(!is(object,"ABSDataSet"))
   {
     stop("input is not an ABSDataSet object!")
+  }
+  if(qforGeneralSD<0 && qforGeneralSD>=1)
+  {
+    stop("qforGeneralSD is out of range!")
   }
    if(is.null(sFactors(object)))
   {
@@ -503,10 +749,22 @@ callParameter <- function(object,replaceOutliers=TRUE,...) {
   }
   Mmax <- pmax(AAmean,BBmean)
   
+  totalvar <- AAvar+BBvar
+  ##paired
+  if(paired(object))
+  {
+    totalvar <- apply(nncounts[,gr2]-nncounts[,gr1],1,var)
+  }
+  ##check variance
+  if(all(totalvar==0)) 
+  {
+    stop("Variance across samples is 0! Check it! The program stops!")
+  }
+  
   sx <- Mmax
-  sy <- AAvar+BBvar
+  sy <- totalvar#AAvar+BBvar
   sy <- (sy-Mmax)/Mmax^2
-  LevelstoNormFC(object) <- min(sqrt(mean(AAvar+BBvar)/2),LevelstoNormFC(object))
+  LevelstoNormFC(object) <- min(sqrt(mean(totalvar)/2),LevelstoNormFC(object))#min(sqrt(mean(AAvar+BBvar)/2),LevelstoNormFC(object))
   ##in case 0 counts for all smaples
   sy[is.na(sy)] <- 0
   if(all(sy<=0))
@@ -539,12 +797,21 @@ callParameter <- function(object,replaceOutliers=TRUE,...) {
   preabs <- predict(ab1,log2(a))
   
   baseadd <- sqrt((a+a^2*preabs^2)*LevelstoNormFC(object)/a/max(1,(max(n1,n2)-1)))
-
+  
+  
   ###shift counts and recalculate the mean and variances
   ncounts <- (nncounts+baseadd)
   Mmax <- Mmax+baseadd
   Mmax[Mmax==0] <- 1
-  abuf <- (AAvar+BBvar-Mmax)/Mmax^2
+  #excounts(object)=nncounts+ggad
+  ###moderate fold-change
+  
+  afoldpara <- genAFold(nncounts,igroups,qforGeneralSD=qforGeneralSD)
+  object[["genesd"]] <- afoldpara[[2]]
+  object[["foldChange"]] <- afoldpara[[1]]
+  ###paired
+ 
+  abuf <- (totalvar-Mmax)/Mmax^2#(AAvar+BBvar-Mmax)/Mmax^2
   
   predis <- predict(ab1,log2(Mmax))^2/(max(n1,n2))
 
@@ -561,26 +828,28 @@ callParameter <- function(object,replaceOutliers=TRUE,...) {
   ncounts[ncounts==0] <- 1
   
   fit <- lmFit(log2(ncounts),design)
-  object[["foldChange"]] <- fit$coefficients[,ngr2]-fit$coefficients[,ngr1]
+  #object[["foldChange"]] <- fit$coefficients[,ngr2]-fit$coefficients[,ngr1]
+  object[["lowFC"]] <- fit$coefficients[,ngr2]-fit$coefficients[,ngr1]
   tvar <- mean((fit$sigma)*sqrt(fit$stdev.unscaled[,ngr1]^2+fit$stdev.unscaled[,ngr2]^2))
   Mmax <- pmax(Mmax,1)
 
   rats <- max(minRates(object),min(m1/mults/sqrt(8)/2+tvar/2,maxRates(object)))
   object[["mts"]] <- rats
-  object[["baseMean"]] <- ((Mmax)*max(n1,n2)+sqrt(max(n1,n2)*pmin(Mmax,(AAvar+BBvar))))*rats
-  object[["Variance"]] <- AAvar+BBvar
+  object[["baseMean"]] <- ((Mmax)*max(n1,n2)+sqrt(max(n1,n2)*pmin(Mmax,(totalvar))))*rats#((Mmax)*max(n1,n2)+sqrt(max(n1,n2)*pmin(Mmax,(AAvar+BBvar))))*rats
+  object[["Variance"]] <- totalvar #AAvar+BBvar
   object[["preab"]] <- Mmax*max(n1,n2)
   return(object)
 }
 #' Using NB distribution to calculate p-value for each gene as well as adjust p-value
 #'
 #' This function firstly calls p-value used \code{\link{pnbinom}} to call pvalue based on sum of counts difference between two
-#' groups, then adjusts the pvalues via \code{\link{p.adjust}} method. In addition, it also shrink the log2 fold-change towards a common dispersion
+#' groups or used \code{\link{pnorm}} to call pvalue via log2 fold-change, then adjusts the pvalues via \code{\link{p.adjust}} method. In addition, it also shrink the log2 fold-change towards a common dispersion
 #' after pvalue calling.
 #'
 #' @title Testing the differential expression by counts difference
 #' @param object an \code{\link{ABSDataSet}} object.
 #' @param adjmethod the method for adjusting p-value, default is 'BH'. For details, see \code{\link{p.adjust.methods}}.
+#' @param useaFold switch for DE detection through fold-change, which will use a normal distribution (N(0,sd)) to test the significance of log2 fold-change. The sd is estimated through a quantile function of gamma distribution at \code{\link{callParameter}}.
 #' 
 #' @return an \code{\link{ABSDataSet}} object with additional elements: shrinked log2 fold-change, pvalue and adjusted p-value,
 #' denoted by foldChange pvalue and adj-pvalue, respectively. Use the \code{\link{results}} method to get access it. 
@@ -594,7 +863,7 @@ callParameter <- function(object,replaceOutliers=TRUE,...) {
 #' obj <- callDEs(obj)
 #' head(results(obj))
 #' @export
-callDEs <- function(object,adjmethod="BH") {
+callDEs <- function(object,adjmethod="BH",useaFold=FALSE) {
   if(!is(object,"ABSDataSet"))
   {
     stop("input is not an ABSDataSet object!")
@@ -607,19 +876,22 @@ callDEs <- function(object,adjmethod="BH") {
   {
     stop("Please provide a correct p-value adjust method according p.adjust.methods.")
   }
+  if(useaFold==TRUE && is.null(object[["genesd"]]))
+  {
+    stop("To detect DE on fold-change, please run 'callParameter' function before 'callDEs'!")
+  }
+  if(useaFold==TRUE && object[["genesd"]]==0)
+  {
+    stop("To detect DE on fold-change, general sd should not be 0! Please check it!")
+  }
   absD <- object[["absD"]]
-  object[["pvalue"]] <- pnbinom(absD,mu=object[["baseMean"]],size=object[["priors"]],lower.tail=F)
-  ##adjusted p-value
-  signs <- rep(1,length(absD))
-  signs[object[["foldChange"]]<0] <- -1
-  mr <- mean(1/object[["priors"]])
-  ##with restriction of 1.0e-10 to avoid the limition of qnbinom
-  inds <- object[["priors"]]< 1/mr & object[["pvalue"]]> 1.0e-10
-  pabsD <- object[["foldChange"]]
-  pabsD[inds] <- log2(object[["preab"]][inds]/(object[["preab"]][inds]-qnbinom(object[["pvalue"]][inds],mu=object[["baseMean"]][inds],size=1/mr,lower.tail=F)))*signs[inds]
-  object[["lowFC"]] <- object[["foldChange"]]
-  pabsD[is.na(pabsD)] <- object[["foldChange"]][is.na(pabsD)]
-  object[["foldChange"]] <- pabsD
+  absF <- abs(object[["foldChange"]])
+  if(useaFold)
+  {
+    message("Generating pvalues via aFold....")
+    object[["pvalue"]] <- pnorm(absF/object[["genesd"]],lower.tail=F)*2
+  }
+  else object[["pvalue"]] <- pnbinom(absD,mu=object[["baseMean"]],size=object[["priors"]],lower.tail=F)
   object[["adj.pvalue"]] <- p.adjust(object[["pvalue"]],method=adjmethod[1]);
   ##get the end time
   object@ends <- Sys.time()

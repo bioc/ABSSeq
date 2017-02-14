@@ -1,7 +1,7 @@
 \name{ABSDataSet}
 \title{ABSDataSet object and constructors}
-\usage{ABSDataSet(counts, groups, normMethod = c("user", "total", "quartile",
-  "geometric"), sizeFactor = 0, minDispersion = NULL, minRates = 0.1,
+\usage{ABSDataSet(counts, groups, normMethod = c("user", "qtotal", "total", "quartile",
+  "geometric"), sizeFactor = 0, paired = FALSE, minDispersion = NULL, minRates = 0.1,
   maxRates = 0.3, LevelstoNormFC = 100)}
 \description{ABSDataSet object and constructors}
 \details{The function contructs an ABSDataSet object with counts table and groups.
@@ -20,7 +20,9 @@ It also checks the structure of counts and groups.The ABSDataSet is a class, use
 
 \item{normMethod}{method for estimating the size factors, should be one of 'user', 'total', 'quartile' and 'geometric'. See \code{\link{normalFactors}} for description.}
 
-\item{sizeFactor}{ize factors for 'user' method, self-defined size factors by user.}
+\item{sizeFactor}{size factors for 'user' method, self-defined size factors by user.}
+
+\item{paired}{switch for differential expression detection in paired samples.}
 
 \item{minDispersion}{a positive double for user-defined penalty of dispersion estimation}
 
@@ -32,4 +34,5 @@ It also checks the structure of counts and groups.The ABSDataSet is a class, use
 }
 \examples{counts <- matrix(1:4,ncol=2)
 groups <- factor(c("a","b"))
-obj <- ABSDataSet(counts, groups)}
+obj <- ABSDataSet(counts, groups)
+obj <- ABSDataSet(counts, groups, paired=TRUE)}
