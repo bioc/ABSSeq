@@ -1,20 +1,21 @@
 Package: ABSSeq
 Type: Package
-Title: ABSSeq: a new RNA-Seq analysis method based on modelling absolute expression differences
+Title: ABSSeq: a new RNA-Seq analysis method based on modelling absolute
+    expression differences
 Version: 1.11.0
 Author: Wentao Yang
 Maintainer: Wentao Yang <wyang@zoologie.uni-kiel.de>
-Description: Inferring differential expression genes by absolute counts difference
-    between two groups, utilizing Negative binomial distribution
-    and moderating fold-change according to heterogeneity of dispersion
-    across expression level.
+Description: Inferring differential expression genes by absolute counts
+    difference between two groups, utilizing Negative binomial distribution
+    and moderating fold-change according to heterogeneity of dispersion across
+    expression level.
 License: GPL (>= 3)
 biocViews: DifferentialExpression
 Imports:
     locfit,
-    limma
+    limma,
+    stats
 Depends:
     R (>= 2.10),
     methods
 Suggests:
-    

@@ -1,7 +1,7 @@
 setClass("SumInfo",representation(begins = "POSIXct",ends= "POSIXct"),contains = "environment")
 setMethod("[[<-", c("SumInfo","character","missing"),
    function(x, i,j,..., value) { 
-      cnames <- c("baseMean","Amean","Bmean","absD","foldChange","rawFC","lowFC","Variance","priors","pvalue","adj.pvalue","m1","mults","trimmed","preab","mts")
+      cnames <- c("baseMean","Amean","Bmean","absD","foldChange","rawFC","lowFC","Variance","priors","pvalue","adj.pvalue","m1","mults","trimmed","preab","mts","genesd")
       if(!i %in% cnames)
       {
        stop( "Can't have an element in this name!" )
@@ -15,7 +15,7 @@ setMethod("[[<-", c("SumInfo","character","missing"),
        x@ends <- Sys.time() # the update time
        x})
 
-setClass("ABSDataSet", representation(counts = "matrix",excounts = "matrix" ,groups = "factor",normMethod="character",sizeFactor="numeric",minDispersion="numeric"
+setClass("ABSDataSet", representation(counts = "matrix",excounts = "matrix" ,groups = "factor",normMethod="character",sizeFactor="numeric",paired="logical",minDispersion="numeric"
                                       ,minRates="numeric",maxRates="numeric",LevelstoNormFC="numeric"),contains="SumInfo")
 
 setValidity( "ABSDataSet", function( object ) {
@@ -34,6 +34,13 @@ setValidity( "ABSDataSet", function( object ) {
   if(length(ngroup)!=2)
   {
    return("the number of group is not equal with 2!")
+  }
+  if(paired(object))
+  {
+    if(sum(object@groups==ngroup[1])!=sum(object@groups==ngroup[2]))
+    {
+      return("For paired comparison, the replicates in each group should be equal!")
+    }
   }
   if(object@maxRates>=1.0 || object@maxRates<=0.0)
   {
@@ -55,9 +62,9 @@ setValidity( "ABSDataSet", function( object ) {
   {
    return("the col number of counts table is not equal with length of groups!")
   }
-  if(length(object@normMethod) !=1 || !object@normMethod %in% c("user","total","quartile","geometric"))
+  if(length(object@normMethod) !=1 || !object@normMethod %in% c("user","qtotal","total","quartile","geometric"))
   {
-     return("Please choose one of the normalization methods as below: 'user', 'total', 'quartile' and 'geometric'!")
+     return("Please choose one of the normalization methods as below: 'user','qtotal', 'total', 'quartile' and 'geometric'!")
   } 
   if(object@normMethod =="user" && (any(is.na(object@sizeFactor)) || length(object@sizeFactor)!= length(object@groups) || any(is.infinite(object@sizeFactor)) || any(object@sizeFactor<0) ))
   {
@@ -77,8 +84,9 @@ setValidity( "ABSDataSet", function( object ) {
 #' @title ABSDataSet object
 #' @param counts a matrix or table with at least two columns and one row,
 #' @param groups a factor with two groups, whose length should be equal  with sample size
-#' @param normMethod method for estimating the size factors, should be one of 'user', 'total', 'quartile' and 'geometric'. See \code{\link{normalFactors}} for description.
-#' @param sizeFactor ize factors for 'user' method, self-defined size factors by user.
+#' @param normMethod method for estimating the size factors, should be one of 'user', 'qtotal', 'total', 'quartile' and 'geometric'. See \code{\link{normalFactors}} for description.
+#' @param sizeFactor size factors for 'user' method, self-defined size factors by user.
+#' @param paired switch for differential expression detection in paired samples.
 #' @param minDispersion a positive double for user-defined penalty of dispersion estimation
 #' @param minRates low bounder rate of baseline estimation for counts difference, default is 0.1
 #' @param maxRates up bounder rate of baseline estimation for counts difference, default is 0.3. Setting minRates equal with maxRates will result in a testing on user-define rate, 
@@ -94,8 +102,9 @@ setValidity( "ABSDataSet", function( object ) {
 #' counts <- matrix(1:4,ncol=2)
 #' groups <- factor(c("a","b"))
 #' obj <- ABSDataSet(counts, groups)
+#' obj <- ABSDataSet(counts, groups, paired=TRUE)
 #' @export
-ABSDataSet <- function(counts, groups, normMethod=c("user","total","quartile","geometric"),sizeFactor=0,minDispersion=NULL,minRates=0.1,maxRates=0.3,LevelstoNormFC=100) {
+ABSDataSet <- function(counts, groups, normMethod=c("user","qtotal","total","quartile","geometric"),sizeFactor=0,paired=FALSE,minDispersion=NULL,minRates=0.1,maxRates=0.3,LevelstoNormFC=100) {
   if (is.null(dim(counts))) {
       stop("'counts' is not like a matrix or a table!")
     }
@@ -103,18 +112,18 @@ ABSDataSet <- function(counts, groups, normMethod=c("user","total","quartile","g
   {
      normMethod <- "quartile"
   }
-  if(!normMethod %in% c("user","total","quartile","geometric"))
+  if(!normMethod %in% c("user","qtotal","total","quartile","geometric"))
   {
-     stop("Please use one of the normalization methods as below: 'user', 'total', 'quartile' and 'geometric'!")
+     stop("Please use one of the normalization methods as below: 'user','qtotal', 'total', 'quartile' and 'geometric'!")
   } 
   if(normMethod=="user")
   {
     obj=new("ABSDataSet",counts=as.matrix(counts),groups=as.factor(groups),
-            minRates=minRates,maxRates=maxRates,LevelstoNormFC=LevelstoNormFC,normMethod=normMethod,sizeFactor=sizeFactor,begins=Sys.time(),ends=Sys.time())
+            minRates=minRates,maxRates=maxRates,paired=paired,LevelstoNormFC=LevelstoNormFC,normMethod=normMethod,sizeFactor=sizeFactor,begins=Sys.time(),ends=Sys.time())
   }else
   {
     obj=new("ABSDataSet",counts=as.matrix(counts),groups=as.factor(groups),
-            minRates=minRates,maxRates=maxRates,LevelstoNormFC=LevelstoNormFC,normMethod=normMethod,begins=Sys.time(),ends=Sys.time())
+            minRates=minRates,maxRates=maxRates,paired=paired,LevelstoNormFC=LevelstoNormFC,normMethod=normMethod,begins=Sys.time(),ends=Sys.time())
   }
   if(!is.null(minDispersion))
   {

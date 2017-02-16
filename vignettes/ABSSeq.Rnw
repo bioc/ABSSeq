@@ -18,7 +18,7 @@ We assume that we have counts data from an experiment, which consists of two con
 
 \verb'ABSSeq' infers differential expression directly by the counts difference between conditions. It assumes that the sum counts difference between conditions follow a Negative binomial distribution with mean \verb'mu' proportional to expression level and dispersion factor \verb'r' (size). The \verb'mu' and \verb'r' is determined by variation in the experiment, i.e., biological variation, sequencing and mapping biases. Typically, the number of replicates in a study is small and not enough to reveal all variation. To overcome this problem, a common approach is to borrow information across genes. Here, we use local regression to smooth dispersion across genes. The smoothed dispersions are then used to produce pseudocounts in the \verb'mu' estimation to accounts for dynamic dispersions at expression level, which in turn moderates the fold-change across expression level. However, the information borrowed across genes based on dispersions is usually incomplete since it often utilizes part of genes with a positive dispersion, which might load to under-estimation and influence the DE inference. To overcome it, ABSSeq introduces a penalty for dispersion estimation, that helps avoid extremely siginicant DEs with small change at high expression level.  
 
-\verb'ABSSeq' tests counts difference directly against a baseline estimated from the data set (\verb'mu'), and therefore reports p-values related to magnitude of difference (fold-change). In addition, \verb'ABSSeq' moderates the fold-changes by two steps: the expression level and gene-specific dispersion, that might facilitate the gene ranking by fold-change and visualization (Heatmap).
+\verb'ABSSeq' tests counts difference directly against a baseline estimated from the data set (\verb'mu'), and therefore reports p-values related to magnitude of difference (fold-change). In addition, \verb'ABSSeq' moderates the fold-changes by two steps: the expression level and gene-specific dispersion, that might facilitate the gene ranking by fold-change and visualization (Heatmap). New alternative approach (named aFold) was introduced, which calls DE genes via log fold-change (see last Section for example).
 
 \section{Pairwise study}
 
@@ -47,11 +47,12 @@ But we also can define groups as
 conditions <- factor(c(rep(1,5),rep(2,5)))
 @
 
-We construct an \verb'ABSDataSet' object by combining the counts matrix and defined groups with the \verb'ABSDataSet' function.
+We construct an \verb'ABSDataSet' object by combining the counts matrix and defined groups with the \verb'ABSDataSet' function. Here, we can also initiate a paired comparison for specific samples, such as data for cancer and normal tissue from same individuals, by seting the \verb'paired' parameter in \verb'ABSDataSet' object.
 
 <<>>=
 obj <- ABSDataSet(simuN5$counts, factor(simuN5$groups))
 obj1 <- ABSDataSet(simuN5$counts, conditions)
+pairedobj <- ABSDataSet(simuN5$counts, conditions,paired=TRUE)
 @
 
 The default normalization method is \verb'quartile', used the up quantile of data. However, there are also other choices for users, that is, \verb'total' by total reads count, \verb'geometric' from DESeq \cite{deseq} and \verb'user' through size factors provided by users. The normalization method can be checked and revised by \verb'normMethod'.
@@ -156,8 +157,21 @@ res=results(obj,c("Amean","Bmean","foldChange","pvalue","adj.pvalue"))
 head(res)
 @
 
+\section{Detecting DE via aFold}
+
+Recently, ABSSeq integrates a new method for DE detection: aFold. aFold utilizes a ploynormial function to model the uncertainty of observed reads count and moderate the fold-change calculation. aFold takes into account variations among samples and genes and reports DE and fold-change in a reliable way. The fold-change produced by aFold may help the experimentalist to avoid arbitrary choice of cut-off thresholds and may enhance subsequent downstream functional analyses. Here is the example for how to use aFold in ABSSeq.
+
+<<>>=
+data(simuN5)
+obj <- ABSDataSet(counts=simuN5$counts, groups=factor(simuN5$groups))
+obj <- ABSSeq(obj, useaFold=TRUE)
+res=results(obj,c("Amean","Bmean","foldChange","pvalue","adj.pvalue"))
+head(res)
+@
+
+
 \begin{thebibliography}{99}
-\bibitem{yang} Wentao Yang, Philip Rosenstielb and Hinrich Schulenburg. \textsl{ABSSeq: a new RNA-Seq analysis method based on modelling absolute expression differences.} (2014).
+\bibitem{yang} Wentao Yang, Philip Rosenstielb and Hinrich Schulenburg. \textsl{ABSSeq: a new RNA-Seq analysis method based on modelling absolute expression differences.} (2016).
 \bibitem{soneson} Soneson C, Delorenzi M \textsl{A comparison of methods for differential expression analysis of RNA-seq data.} BMC Bioinformatics 2013, 14(1):91.
 \bibitem{pickrell} Pickrell JK, Marioni JC, Pai AA, Degner JF, Engelhardt BE, Nkadori E, Veyrieras J-B, Stephens M, Gilad Y, Pritchard JK \textsl{Understanding mechanisms underlying human gene expression variation with RNA sequencing} Nature 2010, 464(7289):768-772.
 \bibitem{deseq} Anders S, Huber W \textsl{Differential expression analysis for sequence count data.} Genome Biol 2010, 11(10):R106.

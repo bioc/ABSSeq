@@ -76,13 +76,13 @@ setReplaceMethod("counts", signature(object="ABSDataSet", value="matrix"),
 excounts.ABSDataSet <- function(object) {
     return(object@excounts)
 }
-#' @name counts      
-#' @rdname counts                                                                
+#' @name excounts      
+#' @rdname excounts                                                                
 #' @export
 setMethod("excounts", signature(object="ABSDataSet"), excounts.ABSDataSet)
-#' @name counts
-#' @rdname counts
-#' @exportMethod "counts<-"
+#' @name excounts
+#' @rdname excounts
+#' @exportMethod "excounts<-"
 setReplaceMethod("excounts", signature(object="ABSDataSet", value="matrix"),
                  function( object, value ) {
                    object@excounts <- value
@@ -238,7 +238,56 @@ setReplaceMethod("normMethod", signature(object="ABSDataSet", value="character")
                    validObject(object)
                    object
                  }) 
- 
+
+
+#' Accessor functions for the 'paired' information in a ABSDataSet
+#' object.
+#' 
+#' The 'paired' is the switch for differential expression detection among paired samples, with a boolean value: TRUE or FALSE (default).
+#' When "paired" is TRUE, the replicates in each group should be equal. 
+#' 
+#' @usage
+#' \S4method{paired}{ABSDataSet}(object)
+#'
+#' \S4method{paired}{ABSDataSet,boolean}(object)<-value
+#'
+#' @docType methods
+#' @title Accessors for the 'paired' slot of a ABSDataSet object.
+#' @name paired
+#' @aliases paired ABSDataSet-method paired<- ABSDataSet logical-method
+#' @param object a \code{ABSDataSet} object.
+#' @param value a boolean object, should  be either TRUE or FALSE.
+#' See \code{\link{ABSDataSet}}
+#' @examples
+#' 
+#' data(simuN5)
+#' obj <- ABSDataSet(counts=simuN5$counts, groups=factor(simuN5$groups))
+#' paired(obj)
+#' paired(obj) <- TRUE
+#' paired(obj)
+paired.ABSDataSet <- function(object) {
+  nm <- object@paired
+  if(length(nm)==0)
+  {
+    message("There is no 'normMethod' information!")
+    return(NULL)
+  }
+  return(nm)
+}
+#' @name paired
+#' @rdname paired
+#' @export
+setMethod("paired", signature(object="ABSDataSet"),paired.ABSDataSet)
+
+#' @name paired
+#' @rdname paired
+#' @exportMethod "paired<-"
+setReplaceMethod("paired", signature(object="ABSDataSet", value="logical"),
+                 function( object, value ) {
+                   object@paired <- value
+                   validObject(object)
+                   object
+                 }) 
 #' Accessor functions for the 'minimalDispersion' information in a ABSDataSet
 #' object.
 #' 
