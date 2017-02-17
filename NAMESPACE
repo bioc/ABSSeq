@@ -55,5 +55,3 @@ exportMethods(sFactors)
 import(locfit)
 import(limma)
 import(methods)
-import(stats)
-
