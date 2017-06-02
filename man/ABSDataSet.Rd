@@ -1,7 +1,7 @@
 \name{ABSDataSet}
 \title{ABSDataSet object and constructors}
 \usage{ABSDataSet(counts, groups, normMethod = c("user", "qtotal", "total", "quartile",
-  "geometric"), sizeFactor = 0, paired = FALSE, minDispersion = NULL, minRates = 0.1,
+  "geometric", "TMM"), sizeFactor = 0, paired = FALSE, minDispersion = NULL, minRates = 0.1,
   maxRates = 0.3, LevelstoNormFC = 100)}
 \description{ABSDataSet object and constructors}
 \details{The function contructs an ABSDataSet object with counts table and groups.
@@ -18,7 +18,7 @@ It also checks the structure of counts and groups.The ABSDataSet is a class, use
 
 \item{groups}{a factor with two groups, whose length should be equal  with sample size}
 
-\item{normMethod}{method for estimating the size factors, should be one of 'user', 'total', 'quartile' and 'geometric'. See \code{\link{normalFactors}} for description.}
+\item{normMethod}{method for estimating the size factors, should be one of 'user', 'qtotal', 'total', 'quartile', 'geometric' and 'TMM'. See \code{\link{normalFactors}} for description.}
 
 \item{sizeFactor}{size factors for 'user' method, self-defined size factors by user.}
 

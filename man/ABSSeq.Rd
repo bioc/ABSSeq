@@ -18,7 +18,7 @@ ABSSeq(object, adjmethod = "BH", replaceOutliers = TRUE, useaFold = FALSE,
 
 \item{quiet}{default is FALSE, whether to print messages at each step}
 
-\item{...}{parameters passed to \code{\link{ReplaceOutliersByMAD}} from \code{\link{callParameter}}}
+\item{...}{parameters passed to \code{\link{ReplaceOutliersByMAD}} and \code{\link{genAFold}} from \code{\link{callParameter}}}
 }
 \value{
 an ABSDataSet object with additional elements, which can be retrieved by \code{\link{results}}:
@@ -46,10 +46,9 @@ obj <- ABSSeq(obj)
 res <- results(obj,c("Amean","Bmean","foldChange","pvalue","adj.pvalue"))
 head(res)
 }
-\author{
-Wentao Yang
-}
 \references{
 Wentao Yang, Philip Rosenstiel & Hinrich Schulenburg: ABSSeq: a new RNA-Seq analysis method based on modelling absolute expression differences
 }
-
+\author{
+Wentao Yang
+}

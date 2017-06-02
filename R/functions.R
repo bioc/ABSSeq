@@ -11,7 +11,7 @@
 #' @param adjmethod defualt is 'BH', method for p-value adjusted, see \code{\link{p.adjust.methods}} for details
 #' @param useaFold defualt is FALSE, switch for DE detection through fold-change, see \code{\link{callDEs}} for details
 #' @param quiet default is FALSE, whether to print messages at each step
-#' @param ... parameters passed to \code{\link{ReplaceOutliersByMAD}} from \code{\link{callParameter}}
+#' @param ... parameters passed to \code{\link{ReplaceOutliersByMAD}} and \code{\link{genAFold}} from \code{\link{callParameter}}
 #' @return an ABSDataSet object with additional elements, which can be retrieved by \code{\link{results}}:
 #' Amean and Bmean, mean of log2 normalized reads count for group A and B, 
 #' foldChange, shrinked (expression level and gene-specific) log2 of fold-change, B - A, 
@@ -75,15 +75,115 @@ estimateSizeFactorsForMatrix <- function( counts, locfunc = median )
      stop("every gene contains at least one zero, cannot compute log geometric means")
    }
    apply( counts, 2, function(cnts)
-      exp( locfunc( ( log(cnts) - loggeomeans )[ is.finite(loggeomeans) ] ) ) )
+      exp( locfunc( ( log(cnts) - loggeomeans )[ is.finite(loggeomeans)&cnts>0] ) ) )
 }
-
+#' Function of qtotal for esitmating size factors 
+#' 
+#' Given a matrix of count data, this function esitmates the size
+#' factors by qtotal method, which is based on assessing DE and ranking
+#'
+#' @title Estimating size factors from the reads count table via ranking 
+#' @param ma a count matrix
+#' @param qper quantile for assessing dispersion of data, default is 0.95, which serves to avoid outliers, should in (0,1]
+#' @param qst start point (quantile) for sliding window, default is 0.85 and should less than 0.99
+#' @param qstep step of sliding window (quantile), default is 0.01, should at least include one gene per sliding
+#' @param qbound window size for calculating size factor, default is 0.1, a smaller window size is suitable if number of genes is large
+#' @param scaleofoutliers baseline scale for detecting outliers of size factor from sliding window, default is 0.2
+#' @return a vector with the estimates size factors, one element per column
+#' @examples
+#' 
+#' data(simuN5)
+#' counts=simuN5$counts
+#' qtotalNormalized(counts)
+#'
+#' @export
+qtotalNormalized=function(ma,qper=0.95,qst=0.85,qstep=0.01,qbound=.1,scaleofoutliers=0.2)
+{
+  if(qper>1||qper<=0||qst>0.99||qst<qbound||qstep<0||qbound>1||qbound<0) 
+    stop("quartile and boundary should be in (0,1]")
+  
+  rowQuar=function(x,y,qper=0.95,qst=0.85,qstep=0.01,qbound=.1,scaleofoutliers=0.2) {
+    #control outlier scale
+    scaleofoutliers <- min(qbound*2,scaleofoutliers)
+    
+    #calculating dispersion
+    indx <- x<=quantile(x,qper)&y<=quantile(y,qper)
+    aa <- mean(x[indx])/mean(y[indx])
+    bb <- sd(x[indx])/sd(y[indx])
+    
+    if(aa==0||bb==0) return(sum(x)/sum(y))
+    if(length(x)!=length(y)) stop("Please input samples with equal gene number!")
+    alens <- length(x)
+    
+    qst <- min(max(qst,qbound),0.99)
+    qstep <- max(qstep, 1/alens)
+    qbound <- min(qst,max(qbound,20/alens))
+    scl <- aa/bb
+    yt <- x
+    if(scl>1) yt <- y
+    aas <- seq(qst,0.99,qstep)#0.99 for excluding outliers
+    rat <- c()
+    for(i in aas)
+    {
+      indx <- yt<=quantile(yt,i)&yt>=quantile(yt,i-qbound)
+      cc <- mean(x[indx])/mean(y[indx])
+      rat<-c(rat,cc)
+    }
+    indx <-is.numeric(rat)&is.finite(rat)
+    rat <- rat[indx]
+    cvr <- 1
+    ##penalty influence of data distribution, find overall cv
+    aas <- seq(min(qst,0.95),0.99,qstep)
+    cvs <- c()
+    for(i in aas)
+    {
+      indx <- x<=quantile(x,i)&y<=quantile(y,i)
+      cvs<-c(cvs,sd(x[indx])/sd(y[indx])/(mean(x[indx])/mean(y[indx])))
+    }
+    indx <-is.numeric(cvs)&is.finite(cvs)&cvs>0
+    cvs <- cvs[indx]
+    if(length(cvs)>1)
+    {
+      sldif <- diff(log(cvs))
+      bm <- max(median(abs(sldif)),scaleofoutliers)
+      cvr<-cvs[max(which(abs(sldif)<bm))+1]
+    }
+    ##limit cv 
+    if(scl<1) cvr<-max(cvr,1)
+    else cvr <- min(cvr,1)
+    if(length(rat)==1) return(rat/cvr^2)
+    if(length(rat)==0) return(sum(x)/sum(y))
+    
+    #filter out outliers
+    sldif <- diff(log(rat))
+    bm <- max(median(abs(sldif))/0.675,scaleofoutliers)
+    cind <- max(which(abs(sldif)<bm))+1
+    lens <- length(rat)
+    rat <- rat[1:cind]
+    sdif <- diff(rat)
+    am <- mean(sdif)
+    (rat[cind]+(lens-cind+1)*am)/cvr^2
+  }
+  sif <- colSums(ma)
+  ind <- 1:ncol(ma)
+  cind <- ind[which.max(sif)]
+  sfac <- rep(1,ncol(ma))
+  ay <- ma[,cind]
+  for(i in 1:ncol(ma))
+  {
+    if(i==cind) next
+    indx <- ma[,i]>0&ay>0
+    if(sum(indx)/length(indx)<0.1) sfac[i] <- sif[i]/sif[cind]
+    else sfac[i] <- rowQuar(ma[indx,i],ay[indx],qper,qst,qstep,qbound,scaleofoutliers)
+  }
+  return(sfac)
+}
 #' Function for esitmating size factors
 #' 
 #' Given a matrix of count data, this function esitmates the size
 #' factors by selected method.
 #' It aslo provides four different methods for normalizing according to user-defined size factors,
-#' total reads, up quantile (75%) or geometric from DESeq (See \code{\link{estimateSizeFactorsForMatrix}}).
+#' total reads, up quantile (75%), qtotal (\code{\link{qtotalNormalized}}), TMM (edgeR) or geometric from DESeq (See \code{\link{estimateSizeFactorsForMatrix}}).
 #'
 #' @title Estimating size factors from the reads count table
 #' @param object a ABSSeq object with element of 'counts' and 'normMethod', see the constructor functions
@@ -104,9 +204,10 @@ normalFactors <- function(object){
     stop("input is not an ABSDataSet object!")
   }
   validObject(object)
+  sizefactor <-rep(1,ncol(object@counts))
   method=object@normMethod
   if (method == "total") {
-    sizefactor=colSums(object@counts)
+    sizefactor<- colSums(object@counts)
   
   }
   if (method == "quartile") {
@@ -114,25 +215,25 @@ normalFactors <- function(object){
       x <- z[z > 0]
       sum(x[x <= quantile(x, 0.75, na.rm = TRUE)], na.rm = TRUE)
     }
-    sizefactor=apply(object@counts,2,rowQuar)
+    cbuf <- object@counts
+    cbuf <- cbuf[colSums(cbuf)>0,]
+    sizefactor <- apply(cbuf,2,rowQuar)
   }
   if (method == "qtotal") {
-    rowQuar=function(z) {
-      x <- (z[z > 0])
-      y <- mean(x[x<=quantile(x,0.25)])
-      zz <- sum(x)
-      y/zz
-    }
-    sizefactor <- colSums(object@counts)
-    rate <- apply(object@counts,2,rowQuar)
-    sizefactor <- sizefactor*rate/mean(rate)
+    sizefactor <- qtotalNormalized(object@counts)
+  }
+  if (method == "TMM") {
+    require(edgeR)
+    nf <- calcNormFactors(object@counts)
+    sizefactor=colSums(object@counts) * nf
   }
   if (method == "geometric") {
     sizefactor <- estimateSizeFactorsForMatrix(object@counts)
   }
   if (method == "user") {
-    sizefactor=object@sizeFactor
+    sizefactor<- object@sizeFactor
   }
+  #message(sizefactor)
   sizemax=max(sizefactor)
   if(sizemax<=0)
     {
@@ -140,8 +241,8 @@ normalFactors <- function(object){
     }
    sizefactor=sizefactor/mean(sizefactor)
   #in case a zero sizefactor
-   sizefactor[sizefactor<=0]=1.0
-   object@sizeFactor=sizefactor
+   sizefactor[sizefactor<=0]<- 1.0
+   object@sizeFactor<- sizefactor
    return(object)
 }
 
@@ -218,6 +319,7 @@ replaceByrow=function(rowd,madpriors,group1,group2,baselevel1,baselevel2,len1,le
 #' @param limitMad the minimal prior for moderating MAD, default is set to 0.707, which is usually the highest standard deviation at expression level of 1
 #' @param spriors prior weight size for prior MAD, default is 2
 #' @param Caseon switch for dealing with outlier trimming at sample size of 2
+#' @param ... reserved parameters
 #' @return a ABSDataSet object with normalized counts after trimming (replaceOutlier=TRUE) or not (replaceOutlier=FALSE). Use the \code{\link{excounts}}
 #' to show it. Use \code{\link{results}} with name 'trimmed' to view the trimming status.
 #' @examples
@@ -230,7 +332,7 @@ replaceByrow=function(rowd,madpriors,group1,group2,baselevel1,baselevel2,len1,le
 #' head(results(obj,c("trimmed")))
 #'
 #' @export
-ReplaceOutliersByMAD=function(object, replaceOutlier=TRUE,cutoff=2.0,baseMean=100,limitMad=0.707,spriors=2,Caseon=TRUE)
+ReplaceOutliersByMAD=function(object, replaceOutlier=TRUE,cutoff=2.0,baseMean=100,limitMad=0.707,spriors=2,Caseon=TRUE,...)
 {
   if(!is(object,"ABSDataSet"))
   {
@@ -453,68 +555,75 @@ callParameterwithoutReplicates <- function(object) {
 #' @param smean pooled mean of read count.
 #' @param amean mean of group A.
 #' @param bmean mean of group B.
-#' @param unct observed uncertainty
-#' @param tsize sample size
-#' @param preval pre-defined uncertainty level as control to penalize absolute count difference, default is 0.05.
-#'
-#' @return A list object with penalty of uncertainty, baseline uncertainty for group A and B, basemean
+#' @param sunc pooled uncertainty.
+#' @param size sample size
+#' @param preval control of variance scale in case over-scaled, default is 0.05.
+#' @param qforkappa quantile for estimating kappa(>=qforkappa), default is 0 (no trimming of data).
+#' @param ... reserved paramaters
+#' @return A list object with baseline of uncertainty & cv and penalty of sample size
 #' 
 #' @title Calculate parameters for differential expression test base on absolute counts differences
 #' @note Not available for user.
 #' @examples
 #'
-#' data(simuN5)
-#' obj <- ABSDataSet(counts=simuN5$counts, groups=factor(simuN5$groups))
-#' obj <- normalFactors(obj)
-#' obj <- callParameter(obj)
-#' head(results(obj,c("foldChange","absD","baseMean")))
-#' plotDifftoBase(obj)
-#'
-preAFold <- function(svar,smean,amean,bmean,unct,tsize,preval=0.05) {
+preAFold <- function(svar,smean,amean,bmean,sunc,size,preval=0.05,qforkappa=0,...) {
+  #estimating kappa factor (assessing variances stability)
   ind <-  smean>=1
+  kam <- smean[ind]
+  kvar <- svar[ind]
+  ka <- sqrt(kvar)/(kam+sunc[ind])
+  qka<- kam>=quantile(kam,qforkappa)
+  ka <- max(1,mean(ka[qka])^2/var(ka[qka]))
+  #no replicates
+  if(!is.numeric(ka)) ka <-1
+  #stable CVs, no need to borrow information
+  if(is.infinite(ka)) 
+  {
+    message("The CVs of all genes are identical!")
+    ka <- 1.0e9
+  }
+  #kappa for Poisson dis.,if closed to Poisson dis, then use sample size as kappa
+  qper <- sum(kvar<=2*kam)/sum(ind)*(size-1)
+  # exclude small variances for fitting
+  ind <- smean>=1&svar>smean
   AAvar <- svar[ind]
-  unctotl <- unct[ind]
   AAmean <- smean[ind]
-
-  sy <- sqrt(AAvar)/AAmean
-  sx=log(AAmean)
+  sx <-log(AAmean)
+  sunct <-sunc[ind]
+  sy <- sqrt(AAvar)/(AAmean+sunct)
   
-  apra <- 0
-  abase <- 0
-  bbase <- 0
   amin <- 1
-  amean <-pmax(amean,amin)
-  bmean <-pmax(bmean,amin)
+  mmean <- pmax(amean,bmean)
+  cpra <- 0
   absd <- pmax(abs(amean-bmean),amin)
-  ##baseline
-  ind <- sy>0
-  if(sum(ind)>0)
+  thres <- max(preval,1/sqrt(max(mmean)))
+  tmax <- preval
+  tmin <- preval
+  if(sum(ind)>0.1*length(ind))
   {
-    prea <- locfit(sy~lp(sx,deg=1,scale=F,nn=.5),family="gamma")
-    abase <- predict(prea,log(amean))*amean
-    bbase <- predict(prea,log(bmean))*bmean
+    preb <- locfit(sy~lp(sx,deg=1,scale=F,nn=.5),family="gamma")
+    cpra <- predict(preb,log(pmax(mmean,amin)))
+    pre0 <- predict(preb,0)
+    tmin <- min(cpra)
+    tmax <- max(cpra)
+    if(tmax>pre0) tmin <- tmax
+    else tmax <- pre0
+    ##as cv in log2
+    scl <-max(1,tmin/tmax/log(2))
+    tmax <- tmax*scl
+    tmin <- tmin*scl
+    #actual level of DE is sqrt(absd)
+    cpra <- predict(preb,0.5*log(pmax(absd,amin)))
   }else
   {
-    message("All variances are zero! Use Poisson as default!")
-    abase <- sqrt(amean)
-    bbase <- sqrt(bmean)
+    message("All variances are less than mean! Use Poisson as default!")
+    cpra <- sqrt(absd)/(absd+sqrt(absd)+1)
   }
+  amin <- 1/size
+  apra <- (cpra/preval)^2/max(qper,ka)*(sqrt(pmax(amean,amin))+sqrt(pmax(bmean,amin)))
+  thres <- min(sqrt(max(size-1,0))*preval,max(tmax/2,tmin))
 
-  ##penalty
-  sy <- sqrt(AAmean)/(AAmean+sqrt(tsize)*unctotl)
-  ind <- unctotl>0
-  if(sum(ind)>0)
-  {
-    prea <- locfit(sy~lp(sx,deg=1,scale=F,nn=.5),family="gamma")
-    apra <- predict(prea,log(absd))
-  }else
-  {
-
-    apra <- 1/sqrt(absd)
-  }
-  apra <- pmax(apra/preval-1,0)*absd*2
- 
-  return(list(apra,abase,bbase))
+  return(list(apra,thres,min(1,max(ka-size+1,0))))
 }
 #' Calculate aFold for each gene and general sd
 #' 
@@ -522,11 +631,11 @@ preAFold <- function(svar,smean,amean,bmean,unct,tsize,preval=0.05) {
 #' shifted and calculate a set of parameters from normalized counts table before \code{\link{callDEs}}
 #'
 #' @param nncounts matrix for read count.
-#' @param cond factor for condition.
-#' @param preval pre-defined uncertainty level as control to penalize absolute count difference, default is 0.05.
-#' @param qforGeneralSD quantile for estimating general SD of fold-change, default is 0.75.
-#'
-#' @return A list with log2 foldchange and general SD for calculating pvalue
+#' @param cond factor for conditions. If provide only one condition, fold-change estimation will be suppressed. 
+#' @param preval pre-defined scale control for variance normalization, default is 0.05, a large value generally increases the fold-changes (decreases penalty of variances) under low expression.
+#' @param qforkappa quantile for estimating kappa(>=qforkappa), default is 0 (without trimming of data). Please set up a value in [0,1) if you want to trim the low expressed data.
+#' @param priorgenesd prior value  for general SD of fold change, if provided, the estimation of general SD will be replaced by this value.
+#' @return A list with log2 foldchange, general SD for calculating pvalue and variance stablized counts
 #' 
 #' @title Calculate parameters for differential expression test base on absolute counts differences
 #' @note This function should run after \code{\link{normalFactors}}.
@@ -539,14 +648,30 @@ preAFold <- function(svar,smean,amean,bmean,unct,tsize,preval=0.05) {
 #' hist(aFold[[1]])
 #'
 #' @export
-genAFold <- function(nncounts,cond,preval=0.05,qforGeneralSD=0.75) {
+genAFold <- function(nncounts,cond,preval=0.05,qforkappa=0,priorgenesd) {
+  if(is.null(ncol(nncounts)))
+  {
+    stop("Please input a matrix as nncounts!")
+  }
+  if(!missing(priorgenesd)&&(!is.numeric(priorgenesd)||priorgenesd<=0)) 
+    stop("Please positive value for priorgenesd!")
+  if(ncol(nncounts)!=length(cond))
+  {
+    stop("The columns of nncounts and length of cond differ!")
+  }
+  if(!is.numeric(qforkappa)||qforkappa<0||qforkappa>1)
+    stop("qforkappa should be in [0,1)!")
+  if(!is.numeric(preval)||preval<0)
+    stop("preval should be positive!")
   igroups <- cond
   ngr1 <- igroups[1]
-  ngr2 <- igroups[igroups!=igroups[1]][1]
+  ngr2 <- NULL
+  if(!all(igroups==ngr1)) ngr2 <- igroups[igroups!=igroups[1]][1]
   gr1 <- igroups==ngr1
-  gr2 <- igroups==ngr2
-  n1 <- sum(igroups==ngr1)
-  n2 <- sum(igroups==ngr2)
+  gr2 <- FALSE
+  if(!all(igroups==ngr1)) gr2 <- igroups==ngr2
+  n1 <- sum(gr1)
+  n2 <- sum(gr2)
   if(n1<2 &&n2<2)
   {
     message("No replicates! Use Poisson as default!")
@@ -557,120 +682,138 @@ genAFold <- function(nncounts,cond,preval=0.05,qforGeneralSD=0.75) {
   tmean <- c()
   tvar <- 0
   if(n1==1) AAmean <- nncounts[,gr1]
-  else
+  else if(n1>1)
   {
     AAmean <- apply(nncounts[,gr1],1,mean)
     AAvar <- apply(nncounts[,gr1],1,var)
-    if(all(AAvar==0)) message("sample identical to each other in group 1")
+    if(all(AAvar==0)) message("Counts in sample identical to each other in group:", ngr1)
   }
- 
   BBmean <- 0
   BBvar <- 0
   if(n2==1) BBmean <- nncounts[,gr2]
-  else
+  else if(n2>1)
   {
     BBmean <- apply(nncounts[,gr2],1,mean)
     BBvar <- apply(nncounts[,gr2],1,var)
-    if(all(BBvar==0)) message("sample identical to each other in group 2")
+    if(all(BBvar==0)) message("Counts in samples identical to each other in group:", ngr2)
   }
  
-  ##observed
-  varunca <- 0
-  varuncb <- 0
-  varuncc <- 0
-  asiz <- sqrt(AAvar)/AAmean
-  asiz[AAmean<=0]<-0
-  varunca <- sqrt(AAvar)*(1+asiz)
-  bsiz <- sqrt(BBvar)/BBmean
-  bsiz[BBmean<=0]<-0
-  varuncb <- sqrt(BBvar)*(1+bsiz)
-  if(n1==1 &&n2>1) {
+  if(n1<=1 &&n2>1) {
     tmean <- BBmean[ind]
     tvar <- BBvar[ind]
-    varuncc <- varuncb[ind]
-  }else if(n1>1 &&n2==1)
+  }else if(n1>1 &&n2<=1)
   {
     tmean <- AAmean[ind]
     tvar <- AAvar[ind]
-    varuncc <- varunca[ind]
-  }else
+  }else if(n1>1 && n2>1)
   {
     tmean <- AAmean[ind]
     tmean <- c(tmean,BBmean[ind])
     tvar <- AAvar[ind]
     tvar <- c(tvar,BBvar[ind])
-    varuncc <- c(varunca[ind],varuncb[ind])
   }
-  if(n1==1&&n2==1) tvar <- 0
+  if(n1==1&&n2==1)
+  {
+    tmean <- c(AAmean[ind],BBmean[ind])
+    tvar <- tmean
+  }
 
-  ##baseline and penalty
-  rat <- preAFold(pmax(tvar,tmean),tmean,AAmean,BBmean,varuncc,max(n1,n2),preval)
-
-  varunc <- pmax(varunca,rat[[2]])+pmax(varuncb,rat[[3]])+rat[[1]]
+  ##observed uncertainty
+  varunca <- 0
+  varuncb <- 0
+  varuncc <- 0
+  AAvar<-pmax(AAvar,AAmean)
+  asiz <- sqrt(AAvar)/AAmean
+  asiz[AAmean<=0]<-0
+  varunca <- sqrt(AAvar)*(1+asiz)
+  BBvar<-pmax(BBvar,BBmean)
+  bsiz <- sqrt(BBvar)/BBmean
+  bsiz[BBmean<=0]<-0
+  varuncb <- sqrt(BBvar)*(1+bsiz)
+  varund <- 0
+  if(n1==0) 
+  {
+    varunca <- 0
+    varund <- varuncb[ind]
+  }
+  else if(n2==0){
+    varuncb <- 0
+    varund <- varunca[ind]
+  }else 
+  {
+    varund <- varunca+varuncb
+    varund <- c(varund[ind],varund[ind])
+  }
+  ##baseline
+  hideunc <- preAFold(tvar,tmean,AAmean,BBmean,varund,max(n1,n2),preval,qforkappa)
+  precut <- hideunc[[2]]
+  varunc <- varunca+varuncb+hideunc[[1]]
   totunc <- pmax(varunc,1.0e-9)
   scounts <- nncounts+totunc
   scounts <- log2(scounts)
+
+  genSDA <- 0
+  genSDB <- 0
   logAmean <- 0
   logAsd <- NULL
-  precut <- preval*sqrt(max(n1,n2))
   if(n1==1) logAmean <- scounts[,gr1]
-  else
+  else if(n1>1)
   {
     logAsd <- apply(scounts[,gr1],1,sd)
     logAmean <- apply(scounts[,gr1],1,mean)
-    ind <- logAmean>quantile(logAmean,qforGeneralSD)&logAsd>precut
-    if(sum(ind)>0) logAsd <- logAsd[ind]
-    else logAsd <- rep(precut,length(logAmean))
+    
   }
   
   logBmean <- 0
   logBsd <- NULL
+
   if(n2==1) logBmean <- scounts[,gr2]
-  else
+  else if(n2>1)
   {
     logBsd <- apply(scounts[,gr2],1,sd)
     logBmean <- apply(scounts[,gr2],1,mean)
-    ind <- logBmean>quantile(logBmean,qforGeneralSD)&logBsd>precut
-    if(sum(ind)>0) logBsd <- logBsd[ind]
-    else logBsd <- rep(precut,length(logBmean))
-  }
-  #final fold-change
-  fold <- (logBmean-logAmean)
-  # estimate general SD
-  genSDA <- 0
-  genSDB <- 0
-  Ava <- 0
-  Bva <- 0
-  Ame <- 0
-  Bme <- 0
-  if(!is.null(logAsd)) {
-    Ava <- var(logAsd)
-    Ame <- mean(logAsd)
-  }
-  if(!is.null(logBsd))
-  {
-    Bme <- mean(logBsd)
-    Bva <- var(logBsd)
+
   }
   
-  #qforGeneralSD <- rate[[5]]
-
-  #as quantile function
-  genesd <- 0.1*sqrt(2)#as Poisson distribution
-  if(!(Ame==0 &&Bme==0))
+  #final fold-change
+  fold <- 0
+  sdf <- 0
+  if(!(n1==0||n2==0))
   {
-    if(Ame==0) genSDA <- 0
-    else if(Ava==0) genSDA <- Ame
-    else genSDA <- mean(logAsd)/sqrt(n1-1)
-    if(Bme==0) genSDB <- 0
-    else if(Bva==0) genSDB <- Bme
-    else genSDB <- mean(logBsd)/sqrt(n2-1)
-    if(Ame==0) genSDA <- genSDB
-    if(Bme==0) genSDB <- genSDA
-    genesd <- sqrt(genSDA^2+genSDB^2+preval^2/max(n1-1,1)+preval^2/max(n2-1,1))
-
+    fold <- (logBmean-logAmean)
+    sdf <- sd(fold)
+    ##large DE will balance the CVs and thus less baseline
+    precut <- precut/2^(max(sdf-preval*sqrt(2),0))
+    if(n1>1)
+    {
+      ind <- logAsd>=precut
+      qnum <- sum(ind)
+      if(qnum>length(ind)*0.1||qnum>50) logAsd <- logAsd[ind]
+      else logAsd <- rep(precut,length(logAmean))
+      genSDA <- mean(logAsd)
+    }
+    if(n2>1)
+    {
+      ind <- logBsd>=precut
+      qnum <- sum(ind)
+      if(qnum>length(ind)*0.1||qnum>50) logBsd <- logBsd[ind]
+      else logBsd <- rep(precut,length(logBmean))
+      genSDB <- mean(logBsd)
+    }
   }
-  message(genesd)
+  # estimate general SD
+
+  genesd <- preval*sqrt(2)#as Poisson distribution
+  if(!(genSDA==0 &&genSDB==0))
+  {
+    ns1 <- max(1,n1-1)+hideunc[[3]]
+    ns2 <- max(1,n2-1)+hideunc[[3]]
+    genSDA <- max(genSDA,genSDB)
+    genesd <- genSDA*sqrt(1/ns1+1/ns2)
+  }
+
+  if(!missing(priorgenesd)) geneSD <- priorgenesd
+
   return(list(aFold=fold,geneSD=genesd,nncounts+totunc))
 }
 #' Calculate parameters for each gene (the moderating basemean, dispersions, moderated fold-change and general sd)
@@ -680,7 +823,6 @@ genAFold <- function(nncounts,cond,preval=0.05,qforGeneralSD=0.75) {
 #'
 #' @param object a \code{\link{ABSDataSet}} object.
 #' @param replaceOutliers switch for outlier replacement, default is TRUE.
-#' @param qforGeneralSD quantile for estimating general SD of fold-change, default is 0.75.
 #' @param ... parameters past to \code{\link{ReplaceOutliersByMAD}}
 #'
 #' @return A ABSDataSet object with absolute differences, basemean, mean of each group, variance, 
@@ -699,14 +841,10 @@ genAFold <- function(nncounts,cond,preval=0.05,qforGeneralSD=0.75) {
 #' plotDifftoBase(obj)
 #'
 #' @export
-callParameter <- function(object,replaceOutliers=TRUE, qforGeneralSD=0.75,...) {
+callParameter <- function(object,replaceOutliers=TRUE,...) {
   if(!is(object,"ABSDataSet"))
   {
     stop("input is not an ABSDataSet object!")
-  }
-  if(qforGeneralSD<0 && qforGeneralSD>=1)
-  {
-    stop("qforGeneralSD is out of range!")
   }
    if(is.null(sFactors(object)))
   {
@@ -806,7 +944,7 @@ callParameter <- function(object,replaceOutliers=TRUE, qforGeneralSD=0.75,...) {
   #excounts(object)=nncounts+ggad
   ###moderate fold-change
   
-  afoldpara <- genAFold(nncounts,igroups,qforGeneralSD=qforGeneralSD)
+  afoldpara <- genAFold(nncounts,igroups,...)
   object[["genesd"]] <- afoldpara[[2]]
   object[["foldChange"]] <- afoldpara[[1]]
   ###paired
