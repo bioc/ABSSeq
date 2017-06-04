@@ -17,4 +17,4 @@ Imports:
 Depends:
     R (>= 2.10),
     methods
-Suggests:
+Suggests: edgeR
