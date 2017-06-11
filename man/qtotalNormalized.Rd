@@ -4,21 +4,25 @@
 \alias{qtotalNormalized}
 \title{Estimating size factors from the reads count table via ranking}
 \usage{
-qtotalNormalized(ma, qper = 0.95, qst = 0.85, qstep = 0.01,
-  qbound = 0.1, scaleofoutliers = 0.2)
+qtotalNormalized(ma, qper = 0.95, qst = 0.1, qend = 0.95, qstep = 0.01,
+  qbound = 0.05, mcut = 5, qcl = 0.2)
 }
 \arguments{
 \item{ma}{a count matrix}
 
 \item{qper}{quantile for assessing dispersion of data, default is 0.95, which serves to avoid outliers, should in (0,1]}
 
-\item{qst}{start point (quantile) for sliding window, default is 0.85 and should less than 0.99}
+\item{qst}{start of quantile for estimating cv ratio, should be in [0,1], default is 0.1}
 
-\item{qstep}{step of sliding window (quantile), default is 0.01, should at least include one gene per sliding}
+\item{qend}{end of quantile for estimating cv ratio, should be in [qbound,1-qbound], default is .95}
 
-\item{qbound}{window size for calculating size factor, default is 0.1, a smaller window size is suitable if number of genes is large}
+\item{qstep}{step of quantile for estimating cv ratio (sliding window), should be in (0,1], default is 0.01}
 
-\item{scaleofoutliers}{baseline scale for detecting outliers of size factor from sliding window, default is 0.2}
+\item{qbound}{window size for estimating cv and shifted size factor, default is 0.05, a smaller window size is suitable if number of genes is large}
+
+\item{mcut}{cutoff of mean from sliding window to avoid abnormal cv, should >=0, default is 5}
+
+\item{qcl}{pre-defined cutoff of cv outliers, default is 0.2, should >=0}
 }
 \value{
 a vector with the estimates size factors, one element per column
@@ -28,12 +32,12 @@ Function of qtotal for esitmating size factors
 }
 \details{
 Given a matrix of count data, this function esitmates the size
-factors by qtotal method, which is based on assessing DE and ranking
+factors by qtotal method, which is based on assessing DE (CV) and ranking. The CV is estimated via sliding window.
 }
 \examples{
 
 data(simuN5)
-counts=simuN5$counts
+counts <- simuN5$counts
 qtotalNormalized(counts)
 
 }

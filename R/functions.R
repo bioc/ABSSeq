@@ -80,89 +80,93 @@ estimateSizeFactorsForMatrix <- function( counts, locfunc = median )
 #' Function of qtotal for esitmating size factors 
 #' 
 #' Given a matrix of count data, this function esitmates the size
-#' factors by qtotal method, which is based on assessing DE and ranking
+#' factors by qtotal method, which is based on assessing DE (CV) and ranking. The CV is estimated via sliding window.
 #'
 #' @title Estimating size factors from the reads count table via ranking 
 #' @param ma a count matrix
 #' @param qper quantile for assessing dispersion of data, default is 0.95, which serves to avoid outliers, should in (0,1]
-#' @param qst start point (quantile) for sliding window, default is 0.85 and should less than 0.99
-#' @param qstep step of sliding window (quantile), default is 0.01, should at least include one gene per sliding
-#' @param qbound window size for calculating size factor, default is 0.1, a smaller window size is suitable if number of genes is large
-#' @param scaleofoutliers baseline scale for detecting outliers of size factor from sliding window, default is 0.2
+#' @param qst start of quantile for estimating cv ratio, should be in [0,1], default is 0.1
+#' @param qend end of quantile for estimating cv ratio, should be in [qbound,1-qbound], default is .95
+#' @param qstep step of quantile for estimating cv ratio (sliding window), should be in (0,1], default is 0.01
+#' @param qbound window size for estimating cv and shifted size factor, default is 0.05, a smaller window size is suitable if number of genes is large
+#' @param mcut cutoff of mean from sliding window to avoid abnormal cv, should >=0, default is 5
+#' @param qcl pre-defined cutoff of cv outliers, default is 0.2, should >=0
 #' @return a vector with the estimates size factors, one element per column
 #' @examples
 #' 
 #' data(simuN5)
-#' counts=simuN5$counts
+#' counts <- simuN5$counts
 #' qtotalNormalized(counts)
 #'
 #' @export
-qtotalNormalized=function(ma,qper=0.95,qst=0.85,qstep=0.01,qbound=.1,scaleofoutliers=0.2)
+qtotalNormalized=function(ma,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,mcut=5,qcl=0.2)
 {
-  if(qper>1||qper<=0||qst>0.99||qst<qbound||qstep<0||qbound>1||qbound<0) 
+  if(qper>1||qper<=0||qst>0.99||qst>qend||qend>1||qend<0||qbound<0||qbound>1||mcut<0) 
     stop("quartile and boundary should be in (0,1]")
   
-  rowQuar=function(x,y,qper=0.95,qst=0.85,qstep=0.01,qbound=.1,scaleofoutliers=0.2) {
-    #control outlier scale
-    scaleofoutliers <- min(qbound*2,scaleofoutliers)
-    
+  rowQuar=function(x,y,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,mcut=5,qcl=0.2) {
     #calculating dispersion
     indx <- x<=quantile(x,qper)&y<=quantile(y,qper)
     aa <- mean(x[indx])/mean(y[indx])
     bb <- sd(x[indx])/sd(y[indx])
+    #in case outliers
+    x <-x[indx]
+    y <-y[indx]
     
     if(aa==0||bb==0) return(sum(x)/sum(y))
     if(length(x)!=length(y)) stop("Please input samples with equal gene number!")
     alens <- length(x)
-    
-    qst <- min(max(qst,qbound),0.99)
+    ##use CV instead of sd of log data to avoid influence of zero counts
+    scl <- bb/aa
     qstep <- max(qstep, 1/alens)
-    qbound <- min(qst,max(qbound,20/alens))
-    scl <- aa/bb
-    yt <- x
-    if(scl>1) yt <- y
-    aas <- seq(qst,0.99,qstep)#0.99 for excluding outliers
-    rat <- c()
-    for(i in aas)
+    if(qbound < 10/alens)
     {
-      indx <- yt<=quantile(yt,i)&yt>=quantile(yt,i-qbound)
-      cc <- mean(x[indx])/mean(y[indx])
-      rat<-c(rat,cc)
+      message("qbound for normalization is too small! reset as 10 divided by gene number!")
+      qbound <- min(1,10/alens)
     }
-    indx <-is.numeric(rat)&is.finite(rat)
-    rat <- rat[indx]
-    cvr <- 1
-    ##penalty influence of data distribution, find overall cv
-    aas <- seq(min(qst,0.95),0.99,qstep)
-    cvs <- c()
-    for(i in aas)
-    {
-      indx <- x<=quantile(x,i)&y<=quantile(y,i)
-      cvs<-c(cvs,sd(x[indx])/sd(y[indx])/(mean(x[indx])/mean(y[indx])))
-    }
-    indx <-is.numeric(cvs)&is.finite(cvs)&cvs>0
-    cvs <- cvs[indx]
-    if(length(cvs)>1)
-    {
-      sldif <- diff(log(cvs))
-      bm <- max(median(abs(sldif)),scaleofoutliers)
-      cvr<-cvs[max(which(abs(sldif)<bm))+1]
-    }
-    ##limit cv 
-    if(scl<1) cvr<-max(cvr,1)
-    else cvr <- min(cvr,1)
-    if(length(rat)==1) return(rat/cvr^2)
-    if(length(rat)==0) return(sum(x)/sum(y))
+    qend <- min(qend,1-qbound)
+    qst <- min(qst,qend)
+    yt <-x
+    ys <- y
     
-    #filter out outliers
-    sldif <- diff(log(rat))
-    bm <- max(median(abs(sldif))/0.675,scaleofoutliers)
-    cind <- max(which(abs(sldif)<bm))+1
-    lens <- length(rat)
-    rat <- rat[1:cind]
-    sdif <- diff(rat)
-    am <- mean(sdif)
-    (rat[cind]+(lens-cind+1)*am)/cvr^2
+    aas <- seq(qst,qend,qstep)
+    ra <- c()
+    axs <- quantile(x,aas)
+    axe <- quantile(x,aas+qbound)
+    ays <- quantile(y,aas)
+    aye <- quantile(y,aas+qbound)
+    for(i in 1:length(aas))
+    {
+      indx <- x>=axs[i]&x<=axe[i]
+      indy <- y>=ays[i]&y<=aye[i]
+      mx <- x[indx]
+      my <- y[indy]
+      ma <-mean(mx)
+      mb <-mean(my)
+      ##use CV instead of sd of log data to avoid influence of zero counts, slightly different
+      sa <- sd(mx)
+      sb <- sd(my)
+      if(ma>mcut&&mb>mcut) ra <- c(ra, sa/ma/(sb/mb))
+    }
+    indx <- is.numeric(ra)||is.finite(ra)||ra>0
+    if(sum(ind)>0) ra <- ra[indx]
+    if(length(ra)<1) ra <-1 
+    ##remove outliers
+    if(length(ra)>1)
+    {
+      rdif <- abs(diff(log(ra)))
+      qcl <- max(qcl,mean(rdif)*2)
+      rind <- which(rdif>qcl)
+      ra[rind] <- 1
+      ra[rind+1] <- 1
+    }
+    rv <- max(ra)
+    if(scl<1) rv <- min(ra)
+    indx <- yt>=quantile(yt,1-qbound)
+    mr <- sum(x[indx])/sum(y[indx])
+    indx <- ys>=quantile(ys,1-qbound)
+    sr <- sum(x[indx])/sum(y[indx])
+    mr/(mr/sr)^(1/(1+rv))
   }
   sif <- colSums(ma)
   ind <- 1:ncol(ma)
@@ -172,9 +176,8 @@ qtotalNormalized=function(ma,qper=0.95,qst=0.85,qstep=0.01,qbound=.1,scaleofoutl
   for(i in 1:ncol(ma))
   {
     if(i==cind) next
-    indx <- ma[,i]>0&ay>0
-    if(sum(indx)/length(indx)<0.1) sfac[i] <- sif[i]/sif[cind]
-    else sfac[i] <- rowQuar(ma[indx,i],ay[indx],qper,qst,qstep,qbound,scaleofoutliers)
+    indx <- ma[,i]>0|ay>0
+    sfac[i] <- rowQuar(ma[indx,i],ay[indx],qper,qst,qend,qstep,qbound,mcut)
   }
   return(sfac)
 }

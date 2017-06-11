@@ -2,7 +2,7 @@ Package: ABSSeq
 Type: Package
 Title: ABSSeq: a new RNA-Seq analysis method based on modelling absolute
     expression differences
-Version: 1.22.2
+Version: 1.22.3
 Author: Wentao Yang
 Maintainer: Wentao Yang <wyang@zoologie.uni-kiel.de>
 Description: Inferring differential expression genes by absolute counts
@@ -18,3 +18,4 @@ Depends:
     R (>= 2.10),
     methods
 Suggests: edgeR
+RoxygenNote: 6.0.1
