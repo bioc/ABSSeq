@@ -105,23 +105,20 @@ qtotalNormalized=function(ma,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,m
     stop("quartile and boundary should be in (0,1]")
   
   rowQuar=function(x,y,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,mcut=5,qcl=0.2) {
-    #calculating dispersion
-    indx <- x<=quantile(x,qper)&y<=quantile(y,qper)
-    aa <- mean(x[indx])/mean(y[indx])
-    bb <- sd(x[indx])/sd(y[indx])
     #in case outliers
+    indx <- x<=quantile(x,qper)&y<=quantile(y,qper)
     x <-x[indx]
     y <-y[indx]
-    
-    if(aa==0||bb==0) return(sum(x)/sum(y))
+
     if(length(x)!=length(y)) stop("Please input samples with equal gene number!")
     alens <- length(x)
     ##use CV instead of sd of log data to avoid influence of zero counts
-    scl <- bb/aa
+    scl <- sum(x)/sum(y)
+    if(!is.numeric(scl)||is.infinite(scl)) return(1)
     qstep <- max(qstep, 1/alens)
     if(qbound < 10/alens)
     {
-      message("qbound for normalization is too small! reset as 10 divided by gene number!")
+      #message("qbound for normalization is too small! reset as 10 divided by gene number!")
       qbound <- min(1,10/alens)
     }
     qend <- min(qend,1-qbound)
@@ -160,13 +157,16 @@ qtotalNormalized=function(ma,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,m
       ra[rind] <- 1
       ra[rind+1] <- 1
     }
-    rv <- max(ra)
-    if(scl<1) rv <- min(ra)
+    rvm <- max(ra)
+    rvi <- min(ra)
     indx <- yt>=quantile(yt,1-qbound)
     mr <- sum(x[indx])/sum(y[indx])
     indx <- ys>=quantile(ys,1-qbound)
     sr <- sum(x[indx])/sum(y[indx])
-    mr/(mr/sr)^(1/(1+rv))
+    m1 <- mr/(mr/sr)^(1/(1+rvm))
+    m2 <- mr/(mr/sr)^(1/(1+rvi))
+    if(abs(log(m2/scl))>abs(log(m1/scl))) m1 <- m2
+    m1
   }
   sif <- colSums(ma)
   ind <- 1:ncol(ma)
