@@ -105,9 +105,15 @@ setValidity( "ABSDataSet", function( object ) {
 #' obj <- ABSDataSet(counts, groups, paired=TRUE)
 #' @export
 ABSDataSet <- function(counts, groups, normMethod=c("user","qtotal","total","quartile","geometric","TMM"),sizeFactor=0,paired=FALSE,minDispersion=NULL,minRates=0.1,maxRates=0.3,LevelstoNormFC=100) {
-  if (is.null(dim(counts))) {
+  if (is.null(dim(counts))||ncol(counts)<2) {
       stop("'counts' is not like a matrix or a table!")
-    }
+  }
+
+  if(missing(groups))
+  {
+    message("Without groups information, randomly contrust 2 groups! This ABSDataSet is only for normalization (may used by ABSSeqlm)!")
+    groups <- c(2,rep(1,ncol(counts)-1))
+  }
   if(length(normMethod)!=1)
   {
      normMethod <- "qtotal"
