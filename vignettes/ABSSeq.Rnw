@@ -51,7 +51,8 @@ pairedobj <- ABSDataSet(simuN5$counts, factor(simuN5$groups),paired=TRUE)
 The \verb'ABSDataSet' function also includes the parameter for the normalization method, which has a default as \verb'qtotal'. \verb'qtotal' assesses the influence of DE on data structure to normalize the data. Additional choices of normalization methods are also provided, that are, \verb'total' by total reads count, \verb'geometric' from DESeq \cite{deseq}, \verb'quantile' by reads count in the first three quartiles from baySeq \cite{bayseq},  \verb'TMM' from edgeR \cite{edgeR} and \verb'user' through size factors provided by users. The normalization method can be showed and revised by \verb'normMethod'.
 
 <<>>=
-obj1 <- ABSDataSet(simuN5$counts, factor(simuN5$groups),normMethod="user",sizeFactor=runif(10,1,2))
+obj1 <- ABSDataSet(simuN5$counts, factor(simuN5$groups),
+                   normMethod="user",sizeFactor=runif(10,1,2))
 normMethod(obj1)
 normMethod(obj1) <- "geometric"
 normMethod(obj1)
@@ -189,7 +190,7 @@ pc2=PCA$x[,2]
 
 \section{DE analysis with complex design}
 
-In combination with linear model from \verb'limma' \cite(limma), aFold is capable to analyze data set with complex experimental design, which is performed by the function \verb'ABSSeqlm'. Here is an example.
+In combination with linear model from \verb'limma' \cite{limma}, aFold is capable to analyze data set with complex experimental design, which is performed by the function \verb'ABSSeqlm'. Here is an example.
 
 <<>>=
 data(simuN5)
@@ -207,7 +208,7 @@ res <- ABSSeqlm(obj,design,condA=c("groups0","groups1"))
 head(res)
 @
 
-The linear model is performed by \verb'lmFit' from \verb'limma' \cite(limma), which could be suppressed via the parameter \verb'lmodel' as
+The linear model is performed by \verb'lmFit' from \verb'limma' \cite{limma}, which could be suppressed via the parameter \verb'lmodel' as
 
 <<>>=
 res <- ABSSeqlm(obj,design,condA=c("groups0"),condB=c("groups1"),lmodel=FALSE)
