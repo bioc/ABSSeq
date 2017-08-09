@@ -90,7 +90,7 @@ estimateSizeFactorsForMatrix <- function( counts, locfunc = median )
 #' @param qstep step of quantile for estimating cv ratio (sliding window), should be in (0,1], default is 0.01
 #' @param qbound window size for estimating cv and shifted size factor, default is 0.05, a smaller window size is suitable if number of genes is large
 #' @param mcut cutoff of mean from sliding window to avoid abnormal cv, should >=0, default is 5
-#' @param qcl pre-defined cutoff of cv outliers, default is 0.2, should >=0
+#' @param qcl scale for outlier detection, should >=0, default is 0.2
 #' @return a vector with the estimates size factors, one element per column
 #' @examples
 #' 
@@ -99,22 +99,21 @@ estimateSizeFactorsForMatrix <- function( counts, locfunc = median )
 #' qtotalNormalized(counts)
 #'
 #' @export
+
 qtotalNormalized=function(ma,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,mcut=5,qcl=0.2)
 {
-  if(qper>1||qper<=0||qst>0.99||qst>qend||qend>1||qend<0||qbound<0||qbound>1||mcut<0) 
+  if(qper>1||qper<=0||qst>1||qst>qend||qend>1||qend<0||qbound<0||qbound>1||mcut<0) 
     stop("quartile and boundary should be in (0,1]")
   
   rowQuar=function(x,y,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,mcut=5,qcl=0.2) {
+    if(length(x)!=length(y)) stop("Please input samples with equal gene number!")
     #in case outliers
     indx <- x<=quantile(x,qper)&y<=quantile(y,qper)
     x <-x[indx]
     y <-y[indx]
-
-    if(length(x)!=length(y)) stop("Please input samples with equal gene number!")
     alens <- length(x)
-    ##use CV instead of sd of log data to avoid influence of zero counts
     scl <- sum(x)/sum(y)
-    if(!is.numeric(scl)||is.infinite(scl)) return(1)
+    if(!is.numeric(scl)||is.infinite(scl)||scl==0) return(1)
     qstep <- max(qstep, 1/alens)
     if(qbound < 10/alens)
     {
@@ -145,26 +144,34 @@ qtotalNormalized=function(ma,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,m
       sb <- sd(my)
       if(ma>mcut&&mb>mcut) ra <- c(ra, sa/ma/(sb/mb))
     }
-    indx <- is.numeric(ra)||is.finite(ra)||ra>0
+    if(length(ra)<1) ra <-1 
+    indx <- is.numeric(ra)||is.finite(ra)||ra>0||is.na(ra)
     if(sum(ind)>0) ra <- ra[indx]
     if(length(ra)<1) ra <-1 
     ##remove outliers
-    if(length(ra)>1)
+    if(length(ra)<0)
     {
       rdif <- abs(diff(log(ra)))
       qcl <- max(qcl,mean(rdif)*2)
       rind <- which(rdif>qcl)
-      ra[rind] <- 1
-      ra[rind+1] <- 1
+      if(length(rind)>0)
+      {
+        ra[rind] <- 1
+        ra[rind+1] <- 1
+        rind <- rind-1
+        rind <- rind[rind>0]
+        if(length(rind)>0) ra[rind] <-1
+      }
     }
     rvm <- max(ra)
     rvi <- min(ra)
-    indx <- yt>=quantile(yt,1-qbound)
+    indx <- x>=quantile(x,1-qbound)
     mr <- sum(x[indx])/sum(y[indx])
-    indx <- ys>=quantile(ys,1-qbound)
+    indx <- y>=quantile(y,1-qbound)
     sr <- sum(x[indx])/sum(y[indx])
     m1 <- mr/(mr/sr)^(1/(1+rvm))
     m2 <- mr/(mr/sr)^(1/(1+rvi))
+    
     if(abs(log(m2/scl))>abs(log(m1/scl))) m1 <- m2
     m1
   }
@@ -181,6 +188,7 @@ qtotalNormalized=function(ma,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,m
   }
   return(sfac)
 }
+
 #' Function for esitmating size factors
 #' 
 #' Given a matrix of count data, this function esitmates the size
@@ -734,13 +742,11 @@ genAFold <- function(nncounts,cond,preval=0.05,qforkappa=0,priorgenesd) {
   bsiz[BBmean<=0]<-0
   varuncb <- sqrt(BBvar)*(1+bsiz)
   varund <- 0
-  if(n1==0) 
+  if(n1<=1) 
   {
-    varunca <- 0
     varund <- varuncb[ind]
   }
-  else if(n2==0){
-    varuncb <- 0
+  else if(n2<=1){
     varund <- varunca[ind]
   }else 
   {

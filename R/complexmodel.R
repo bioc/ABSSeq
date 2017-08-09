@@ -232,6 +232,7 @@ aFoldcomplexDesign <- function(nncounts,design,condA,condB=NULL,lmodel=TRUE,prev
   smean <- 0
   asize <- 1
   aveunc <- 0
+  aveunct <- 0
   tnum <- 0
   rcond <- c()
   for(i in 1:colnum)
@@ -246,15 +247,17 @@ aFoldcomplexDesign <- function(nncounts,design,condA,condB=NULL,lmodel=TRUE,prev
       tvar <- c(tvar,paras[[3]])
       tnum <- tnum+1
       rcond <- c(rcond,cond[i])
+      aveunct <- aveunct+paras[[1]]
     }
     aveunc <- aveunc+paras[[1]]
     mmean[,i] <- paras[[2]]
     smean <- smean+sqrt(paras[[2]])
   }
   aveunc <-aveunc/max(colnum-1,1)
+  aveunct <- aveunct/max(tnum-1,1)
   smean <- smean/max(colnum-1,1)
   tunc <- c()
-  for(i in 1:colnum) tunc <-c(tunc,aveunc)
+  for(i in 1:tnum) tunc <-c(tunc,aveunct)
   basem <- 0
   if(colnum>2) basem <- apply(mmean,1,sd)
   else if(colnum==2) basem <- abs(mmean[,2]-mmean[,1])
