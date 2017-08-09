@@ -742,13 +742,13 @@ genAFold <- function(nncounts,cond,preval=0.05,qforkappa=0,priorgenesd) {
   bsiz[BBmean<=0]<-0
   varuncb <- sqrt(BBvar)*(1+bsiz)
   varund <- 0
-  if(n1<=1) 
+  if(n1<=1&&n2>1) 
   {
     varund <- varuncb[ind]
   }
-  else if(n2<=1){
+  else if(n2<=1&&n1>1){
     varund <- varunca[ind]
-  }else 
+  }else
   {
     varund <- varunca+varuncb
     varund <- c(varund[ind],varund[ind])
