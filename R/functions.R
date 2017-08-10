@@ -646,7 +646,7 @@ preAFold <- function(svar,smean,amean,bmean,sunc,size,preval=0.05,qforkappa=0,..
 #' @param preval pre-defined scale control for variance normalization, default is 0.05, a large value generally increases the fold-changes (decreases penalty of variances) under low expression.
 #' @param qforkappa quantile for estimating kappa(>=qforkappa), default is 0 (without trimming of data). Please set up a value in [0,1) if you want to trim the low expressed data.
 #' @param priorgenesd prior value  for general SD of fold change, if provided, the estimation of general SD will be replaced by this value.
-#' @return A list with log2 foldchange, general SD for calculating pvalue and variance stablized counts
+#' @return A list with log2 foldchange, general SD for calculating pvalue, variance stabilized counts and expression level adjusted counts (used for PCA analysis)
 #' 
 #' @title Calculate parameters for differential expression test base on absolute counts differences
 #' @note This function should run after \code{\link{normalFactors}}.
@@ -823,7 +823,7 @@ genAFold <- function(nncounts,cond,preval=0.05,qforkappa=0,priorgenesd) {
 
   if(!missing(priorgenesd)) geneSD <- priorgenesd
 
-  return(list(aFold=fold,geneSD=genesd,nncounts+totunc))
+  return(list(aFold=fold,geneSD=genesd,nncounts+totunc,nncounts+hideunc[[1]]))
 }
 #' Calculate parameters for each gene (the moderating basemean, dispersions, moderated fold-change and general sd)
 #' 

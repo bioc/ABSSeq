@@ -18,7 +18,7 @@ genAFold(nncounts, cond, preval = 0.05, qforkappa = 0, priorgenesd)
 \item{priorgenesd}{prior value  for general SD of fold change, if provided, the estimation of general SD will be replaced by this value.}
 }
 \value{
-A list with log2 foldchange, general SD for calculating pvalue and variance stablized counts
+A list with log2 foldchange, general SD for calculating pvalue, variance stabilized counts and expression level adjusted counts (used for PCA analysis).
 }
 \description{
 Calculate aFold for each gene and general sd

@@ -174,10 +174,14 @@ obj <- ABSDataSet(counts=simuN5$counts)
 cond <- as.factor(rep("hex",ncol(simuN5$counts)))
 ##normalization
 cda <- counts(obj,T)
-##variance stablization
+##variance stabilization
 sds <- genAFold(cda,cond)
+##sds is list vector, which contains variance stabilized read counts in 3rd element
+##or expression level adjusted counts in 4th element. 3rd element is more sensitive
+##to difference between samples than the 4th one. Here we use the 4th element for a
+##PCA analysis.
 ## log transformation
-ldat <- log2(sds[[3]])
+ldat <- log2(sds[[4]])
 ## PCA analysis
 PCA <- prcomp(t(ldat), scale = F)
 ## Percentage of components
