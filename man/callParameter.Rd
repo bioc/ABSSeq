@@ -4,14 +4,12 @@
 \alias{callParameter}
 \title{Calculate parameters for differential expression test base on absolute counts differences}
 \usage{
-callParameter(object, replaceOutliers = TRUE, qforGeneralSD = 0.75, ...)
+callParameter(object, replaceOutliers = TRUE, ...)
 }
 \arguments{
 \item{object}{a \code{\link{ABSDataSet}} object.}
 
 \item{replaceOutliers}{switch for outlier replacement, default is TRUE.}
-
-\item{qforGeneralSD}{quantile for estimating general SD of fold-change, default is 0.75.}
 
 \item{...}{parameters past to \code{\link{ReplaceOutliersByMAD}}}
 }
@@ -39,4 +37,3 @@ head(results(obj,c("foldChange","absD","baseMean")))
 plotDifftoBase(obj)
 
 }
-

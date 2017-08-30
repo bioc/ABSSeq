@@ -4,19 +4,21 @@
 \alias{genAFold}
 \title{Calculate parameters for differential expression test base on absolute counts differences}
 \usage{
-genAFold(nncounts, cond, preval = 0.05, qforGeneralSD = 0.75)
+genAFold(nncounts, cond, preval = 0.05, qforkappa = 0, priorgenesd)
 }
 \arguments{
 \item{nncounts}{matrix for read count.}
 
-\item{cond}{factor for condition.}
+\item{cond}{factor for conditions. If provide only one condition, fold-change estimation will be suppressed.}
 
-\item{preval}{pre-defined uncertainty level as control to penalize absolute count difference, default is 0.05.}
+\item{preval}{pre-defined scale control for variance normalization, default is 0.05, a large value generally increases the fold-changes (decreases penalty of variances) under low expression.}
 
-\item{qforGeneralSD}{quantile for estimating general SD of fold-change, default is 0.75.}
+\item{qforkappa}{quantile for estimating kappa(>=qforkappa), default is 0 (without trimming of data). Please set up a value in [0,1) if you want to trim the low expressed data.}
+
+\item{priorgenesd}{prior value  for general SD of fold change, if provided, the estimation of general SD will be replaced by this value.}
 }
 \value{
-A list with log2 foldchange and general SD for calculating pvalue
+A list with log2 foldchange, general SD for calculating pvalue, variance stabilized counts and expression level adjusted counts (used for PCA analysis).
 }
 \description{
 Calculate aFold for each gene and general sd
@@ -36,4 +38,3 @@ aFold <- genAFold(mtx,factor(simuN5$groups))
 hist(aFold[[1]])
 
 }
-
