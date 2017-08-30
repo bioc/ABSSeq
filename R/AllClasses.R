@@ -62,9 +62,9 @@ setValidity( "ABSDataSet", function( object ) {
   {
    return("the col number of counts table is not equal with length of groups!")
   }
-  if(length(object@normMethod) !=1 || !object@normMethod %in% c("user","qtotal","total","quartile","geometric"))
+  if(length(object@normMethod) !=1 || !object@normMethod %in% c("user","qtotal","total","quartile","geometric","TMM"))
   {
-     return("Please choose one of the normalization methods as below: 'user','qtotal', 'total', 'quartile' and 'geometric'!")
+     return("Please choose one of the normalization methods as below: 'user','qtotal', 'total', 'quartile','TMM' and 'geometric'!")
   } 
   if(object@normMethod =="user" && (any(is.na(object@sizeFactor)) || length(object@sizeFactor)!= length(object@groups) || any(is.infinite(object@sizeFactor)) || any(object@sizeFactor<0) ))
   {
@@ -84,7 +84,7 @@ setValidity( "ABSDataSet", function( object ) {
 #' @title ABSDataSet object
 #' @param counts a matrix or table with at least two columns and one row,
 #' @param groups a factor with two groups, whose length should be equal  with sample size
-#' @param normMethod method for estimating the size factors, should be one of 'user', 'qtotal', 'total', 'quartile' and 'geometric'. See \code{\link{normalFactors}} for description.
+#' @param normMethod method for estimating the size factors, default is qtotal, should be one of 'user', 'qtotal', 'total', 'quartile', 'TMM' and 'geometric'. See \code{\link{normalFactors}} for description.
 #' @param sizeFactor size factors for 'user' method, self-defined size factors by user.
 #' @param paired switch for differential expression detection in paired samples.
 #' @param minDispersion a positive double for user-defined penalty of dispersion estimation
@@ -104,17 +104,23 @@ setValidity( "ABSDataSet", function( object ) {
 #' obj <- ABSDataSet(counts, groups)
 #' obj <- ABSDataSet(counts, groups, paired=TRUE)
 #' @export
-ABSDataSet <- function(counts, groups, normMethod=c("user","qtotal","total","quartile","geometric"),sizeFactor=0,paired=FALSE,minDispersion=NULL,minRates=0.1,maxRates=0.3,LevelstoNormFC=100) {
-  if (is.null(dim(counts))) {
+ABSDataSet <- function(counts, groups, normMethod=c("user","qtotal","total","quartile","geometric","TMM"),sizeFactor=0,paired=FALSE,minDispersion=NULL,minRates=0.1,maxRates=0.3,LevelstoNormFC=100) {
+  if (is.null(dim(counts))||ncol(counts)<2) {
       stop("'counts' is not like a matrix or a table!")
-    }
+  }
+
+  if(missing(groups))
+  {
+    message("Without groups information, randomly contrust 2 groups! This ABSDataSet is only for normalization (may used by ABSSeqlm)!")
+    groups <- c(2,rep(1,ncol(counts)-1))
+  }
   if(length(normMethod)!=1)
   {
-     normMethod <- "quartile"
+     normMethod <- "qtotal"
   }
-  if(!normMethod %in% c("user","qtotal","total","quartile","geometric"))
+  if(!normMethod %in% c("user","qtotal","total","quartile","geometric","TMM"))
   {
-     stop("Please use one of the normalization methods as below: 'user','qtotal', 'total', 'quartile' and 'geometric'!")
+     stop("Please use one of the normalization methods as below: 'user','qtotal', 'total', 'quartile', 'TMM' and 'geometric'!")
   } 
   if(normMethod=="user")
   {
