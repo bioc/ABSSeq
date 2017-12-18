@@ -78,7 +78,7 @@ estimateSizeFactorsForMatrix <- function( counts, locfunc = median )
       exp( locfunc( ( log(cnts) - loggeomeans )[ is.finite(loggeomeans)&cnts>0] ) ) )
 }
 #' Function of qtotal for esitmating size factors 
-#' 
+#' (updating 11/12/2017, refine contol size factor to approach real size factor)
 #' Given a matrix of count data, this function esitmates the size
 #' factors by qtotal method, which is based on assessing DE (CV) and ranking. The CV is estimated via sliding window.
 #'
@@ -89,8 +89,8 @@ estimateSizeFactorsForMatrix <- function( counts, locfunc = median )
 #' @param qend end of quantile for estimating cv ratio, should be in [qbound,1-qbound], default is .95
 #' @param qstep step of quantile for estimating cv ratio (sliding window), should be in (0,1], default is 0.01
 #' @param qbound window size for estimating cv and shifted size factor, default is 0.05, a smaller window size is suitable if number of genes is large
-#' @param mcut cutoff of mean from sliding window to avoid abnormal cv, should >=0, default is 5
-#' @param qcl scale for outlier detection, should >=0, default is 0.2
+#' @param mcut cutoff of mean from sliding window to avoid abnormal cv, should >=0, default is 4
+#' @param qcl scale for outlier detection, should >=1, default is 1.5
 #' @return a vector with the estimates size factors, one element per column
 #' @examples
 #' 
@@ -99,18 +99,14 @@ estimateSizeFactorsForMatrix <- function( counts, locfunc = median )
 #' qtotalNormalized(counts)
 #'
 #' @export
-
-qtotalNormalized=function(ma,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,mcut=5,qcl=0.2)
+qtotalNormalized=function(ma,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,mcut=4,qcl=1.5)
 {
   if(qper>1||qper<=0||qst>1||qst>qend||qend>1||qend<0||qbound<0||qbound>1||mcut<0) 
     stop("quartile and boundary should be in (0,1]")
   
-  rowQuar=function(x,y,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,mcut=5,qcl=0.2) {
+  rowQuar=function(x,y,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,mcut=4,qcl=1.5) {
     if(length(x)!=length(y)) stop("Please input samples with equal gene number!")
-    #in case outliers
-    indx <- x<=quantile(x,qper)&y<=quantile(y,qper)
-    x <-x[indx]
-    y <-y[indx]
+    #excluding outliers
     alens <- length(x)
     scl <- sum(x)/sum(y)
     if(!is.numeric(scl)||is.infinite(scl)||scl==0) return(1)
@@ -122,15 +118,14 @@ qtotalNormalized=function(ma,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,m
     }
     qend <- min(qend,1-qbound)
     qst <- min(qst,qend)
-    yt <-x
-    ys <- y
-    
     aas <- seq(qst,qend,qstep)
     ra <- c()
     axs <- quantile(x,aas)
     axe <- quantile(x,aas+qbound)
     ays <- quantile(y,aas)
     aye <- quantile(y,aas+qbound)
+    prevs <- 0
+    prein <- 0
     for(i in 1:length(aas))
     {
       indx <- x>=axs[i]&x<=axe[i]
@@ -140,39 +135,111 @@ qtotalNormalized=function(ma,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,m
       ma <-mean(mx)
       mb <-mean(my)
       ##use CV instead of sd of log data to avoid influence of zero counts, slightly different
-      sa <- sd(mx)
-      sb <- sd(my)
-      if(ma>mcut&&mb>mcut) ra <- c(ra, sa/ma/(sb/mb))
-    }
-    if(length(ra)<1) ra <-1 
-    indx <- is.numeric(ra)||is.finite(ra)||ra>0||is.na(ra)
-    if(sum(ind)>0) ra <- ra[indx]
-    if(length(ra)<1) ra <-1 
-    ##remove outliers
-    if(length(ra)<0)
-    {
-      rdif <- abs(diff(log(ra)))
-      qcl <- max(qcl,mean(rdif)*2)
-      rind <- which(rdif>qcl)
-      if(length(rind)>0)
+      mf <- sd(mx)/ma/(sd(my)/mb)
+      if(i==1) prevs <- mf
+      if(i>1)
       {
-        ra[rind] <- 1
-        ra[rind+1] <- 1
-        rind <- rind-1
-        rind <- rind[rind>0]
-        if(length(rind)>0) ra[rind] <-1
+        mz <- prevs/mf
+        if(is.infinite(mz)||is.na(mz)||(ma<=mcut||mb<=mcut)) prein <-i
+        if(prein!=i&&(mz>qcl||mz<1/qcl)) mf <- ifelse(aas[i]>=0.9,sd(log(mx+1))/sd(log(my+1)),NA)
+        if(is.infinite(mf)||is.na(mf)) prein <-i
       }
+      prevs<-mf
+      ra <- c(ra, mf)
     }
+    if(length(ra)>1) ra <- ra[min(prein+1,length(ra)):length(ra)]
+    if(length(ra)<1) ra <- 1
     rvm <- max(ra)
     rvi <- min(ra)
-    indx <- x>=quantile(x,1-qbound)
-    mr <- sum(x[indx])/sum(y[indx])
-    indx <- y>=quantile(y,1-qbound)
-    sr <- sum(x[indx])/sum(y[indx])
-    m1 <- mr/(mr/sr)^(1/(1+rvm))
-    m2 <- mr/(mr/sr)^(1/(1+rvi))
-    
+    indx <- x<=quantile(x,qper)&y<=quantile(y,qper)
+    x1 <-x[indx]
+    y1 <-y[indx]
+    scl <- sum(x1)/sum(y1)
+    if(!is.numeric(scl)||is.infinite(scl)||scl==0) return(sum(x)/sum(y))
+    ##get ratios
+    indx <- x1>=quantile(x1,1-qbound)
+    mr <- sum(x1[indx])/sum(y1[indx])
+    indx <- y1>=quantile(y1,1-qbound)
+    sr <- sum(x1[indx])/sum(y1[indx])
+    if(is.na(mr*sr)||is.infinite(mr*sr)) return(sum(x)/sum(y))
+    inds <- x>0&y>0
+    m3 <- scl # candidate 1
+    if(sum(inds)>max(200,0.1*alens)) #refine scl for control and m3
+    {
+      ind <- x<=quantile(x,0.95)&y<=quantile(y,0.95) #leave out of 0.05 (most likely contains outliers)
+      scl <- sum(x[ind])/sum(y[ind])
+      x<- x[inds]
+      y<- y[inds]
+      lx <- log(x+1)
+      ly <- log(y+1)
+      lfc <- lx-ly
+      lsum <- lx+ly
+      zz <- c() #for median of lcf via ranking by x*y
+      zg <- c() #for median ratio via ranking by x*y
+      aas <- seq(0.95,0,-max(0.01, 1/alens))
+      qz <- quantile(lsum,aas)
+      medx <- median(x[x>=quantile(x,0.95)])/median(y[y>=quantile(y,0.95)]) ## first median ratio of ranking x | y
+      medo <- median(x)/median(y) ##median ratio
+      medl <- exp(median(lfc)) ##median log FC
+      mmr <- max(tapply(quantile(x,aas),1:length(aas),function(iz,ix=x,iy=lfc){exp(median(iy[ix>=iz]))}))
+      msr <- min(tapply(quantile(y,aas),1:length(aas),function(iz,ix=y,iy=lfc){exp(median(iy[ix>=iz]))}))
+      for(each in 1:length(aas))
+      {
+        ind <- lsum>=qz[each]
+        zz <- c(zz,exp(median(lfc[ind])))
+        zg <- c(zg,median(x[ind])/median(y[ind]))
+      }
+      ragfil <- function(ix,iy){max(min(iy),min(max(iy),ix))}
+      ratr <- sqrt(medo/medl)
+      maxminv <- c(max(zg),min(zg),max(zz),min(zz))
+      ##control of scalling factor scl by x*y
+      scl1 <- sum(x[lsum<=qz[1]])/sum(y[lsum<=qz[1]])
+      sclc <- c(zz[1],scl1) ##scl should be in [zz[1], scl1]
+      sclc[1] <- ragfil(sclc[1]/ragfil(ratr/medx*sclc[1],c(1,ratr)),sclc)
+      cofmin <- ifelse(sclc[2]>sclc[1],max(1,zz[1]/maxminv[4]),min(1,zz[1]/maxminv[3]))
+      sclc[2]<- ragfil(scl1/cofmin,sclc)
+      cofmax <- medx/ragfil(medx,maxminv[1:2])
+      scl <- ragfil(scl,c(sclc[1]/cofmax,sclc[2]/ragfil(cofmax/cofmin,c(1,cofmax))))
+      ##control of scalling factor scl by lfc
+      ratv <- zg/zz
+      maxminr <- c(max(ratv),min(ratv))
+      mrat <- medx/zg[1] #scaling factor of medl
+      grat <- ratv[1]
+      medxv <- maxminv[1:2]/maxminv[3:4]
+      cofmax <- ragfil(grat/(medx/ragfil(medx,maxminv[3:4]))^2,c(1,grat))^2
+      addz <- ragfil(ragfil(ragfil(grat*ratr,c(grat,grat^2)),maxminr),c(medxv^2,ratr/sqrt(mrat)*medxv))
+      ratl <- ragfil(ragfil(ragfil(mrat*ratr,c(1,mrat))*addz,c(cofmax,mrat)),c(1,grat,ratr^2)^2)# in case over scaling
+      prescl <- scl
+      scl <- ragfil(ragfil(scl,maxminv[3:4]/ratr),maxminv[3:4]/ratl)
+      medxv <- c(maxminv*(prescl/scl)^2,zg^2/zz,zz[1:10]^2/zg[1:10])
+      scl <- scl^2/medl/ragfil(medx^2/ifelse(mrat>1,max(medxv),min(medxv))/zg[1],c(1,mrat)) #final scaling factor
+      ##in case outliers
+      mr1 <-min(mmr,max(mr,maxminv[3]^2/maxminv[4]))
+      sr1 <-max(msr,min(sr,maxminv[4]^2/maxminv[3]))
+      mr <- min(mr,mmr)
+      sr <- max(sr,msr)
+      ##in case over scalling
+      indf <- !(lfc<=log(sr1)|lfc>=log(mr1)) ##forward index
+      nn <- min(sum(lfc<=log(sr1)),sum(lfc>=log(mr1)))/length(lfc)
+      mrat <- max(maxminr,1/maxminr)
+      if(sum(lfc<=log(sr1))>sum(lfc>=log(mr1))) mrat <- min(mrat,1/mrat)
+      indr <- !(lfc<=quantile(lfc,nn)+log(min(mrat^2,1))|lfc>=quantile(lfc,1-nn)+log(max(mrat^2,1)))##reverse index
+      if(min(sum(indf),sum(indr))>=max(50,0.1*length(indr))) 
+      {
+        m3a <- mean(x[indf])/mean(y[indf])
+        m3b <- mean(x[indr])/mean(y[indr])
+        m3 <- maxminv[3]*maxminv[4]/scl
+        scl<- scl^2/m3 # final control
+        m3 <- ragfil(m3,c(m3a^2/m3b,m3b^2/m3a,medo,medl))#limit m3, 1st
+        m3 <- ragfil(m3,c(mmr,msr)) #limit m3, 2nd
+        mrat <- ragfil(ratr*ifelse(ratr>1,maxminr[2],maxminr[1]),c(1,ratr))^2
+        m3 <- ragfil(m3,c(scl1*zz[1]/c(mmr,msr),sqrt(scl1*zz[1])*c(mrat,1/mrat))) #limit m3, 3rd
+      }
+    }
+    m1 <- mr/(mr/sr)^(1/(1+rvm)) #candidate 2
+    m2 <- mr/(mr/sr)^(1/(1+rvi)) #candidate 3
     if(abs(log(m2/scl))>abs(log(m1/scl))) m1 <- m2
+    if(abs(log(m3/scl))>abs(log(m1/scl))) m1 <- m3
     m1
   }
   sif <- colSums(ma)
@@ -184,7 +251,7 @@ qtotalNormalized=function(ma,qper=0.95,qst=0.1,qend=.95,qstep=0.01,qbound=0.05,m
   {
     if(i==cind) next
     indx <- ma[,i]>0|ay>0
-    sfac[i] <- rowQuar(ma[indx,i],ay[indx],qper,qst,qend,qstep,qbound,mcut)
+    sfac[i] <- rowQuar(ma[indx,i],ay[indx],qper,qst,qend,qstep,qbound,mcut,qcl)
   }
   return(sfac)
 }
