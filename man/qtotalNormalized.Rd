@@ -5,7 +5,7 @@
 \title{Estimating size factors from the reads count table via ranking}
 \usage{
 qtotalNormalized(ma, qper = 0.95, qst = 0.1, qend = 0.95, qstep = 0.01,
-  qbound = 0.05, mcut = 5, qcl = 0.2)
+  qbound = 0.05, mcut = 4, qcl = 1.5)
 }
 \arguments{
 \item{ma}{a count matrix}
@@ -20,9 +20,9 @@ qtotalNormalized(ma, qper = 0.95, qst = 0.1, qend = 0.95, qstep = 0.01,
 
 \item{qbound}{window size for estimating cv and shifted size factor, default is 0.05, a smaller window size is suitable if number of genes is large}
 
-\item{mcut}{cutoff of mean from sliding window to avoid abnormal cv, should >=0, default is 5}
+\item{mcut}{cutoff of mean from sliding window to avoid abnormal cv, should >=0, default is 4}
 
-\item{qcl}{pre-defined cutoff of cv outliers, default is 0.2, should >=0}
+\item{qcl}{scale for outlier detection, should >=0, default is 1.5}
 }
 \value{
 a vector with the estimates size factors, one element per column
