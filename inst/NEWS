@@ -1,22 +1,22 @@
-2017-12-18
-Updating! Refine qtotal (R funtion: qtotalNormalized)
+1.32.2 (2017-12-18)
++ Updating! Refine qtotal (R funtion: qtotalNormalized)
 
-2017-07-18
-Updating! Adapt aFold model for complex design with linear model (R funtion: ABSSeqlm)
+1.30.1 (2017-07-18)
++ Updating! Adapt aFold model for complex design with linear model (R funtion: ABSSeqlm)
 
-2017-06-02
-1) Updating! Introduce a new approach for normalization as qtotal (R funtion: qtotalNormalized)
-2) aFold now moderates fold changes upon overall dispersion and gene-specific dispersion
+1.30.1 (2017-06-02)
++ Updating! Introduce a new approach for normalization as qtotal (R funtion: qtotalNormalized)
++ aFold now moderates fold changes upon overall dispersion and gene-specific dispersion
 
-2017-02-14
-Updating! Adding new method: aFold to call DE via fold-change
+1.11.0 (2017-02-14)
++ Updating! Adding new method: aFold to call DE via fold-change
 
-2016-02-29
-Updating! Enable the paired comparison by seting up 'paired' parameter in 'ABSDataSet' object
+1.6.0 (2016-02-29)
++ Updating! Enable the paired comparison by seting up 'paired' parameter in 'ABSDataSet' object
 
-2015-08-24
-This is the second version of ABSSeq.
-1) Use NB distribution insead of GP to model the counts difference between conditions
-2) Introduce an efficient outlier detection method: moderated MAD
-3) Introduce penalty for dispersion estimation
-4) Provide moderation of log2 fold-change at expression level and gene-specific dispersion
+1.5.1 (2015-08-24)
++ This is the second version of ABSSeq.
+o Use NB distribution insead of GP to model the counts difference between conditions
+o Introduce an efficient outlier detection method: moderated MAD
+o Introduce penalty for dispersion estimation
+o Provide moderation of log2 fold-change at expression level and gene-specific dispersion
