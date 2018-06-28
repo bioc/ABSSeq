@@ -4,7 +4,8 @@
 \alias{genAFold}
 \title{Calculate parameters for differential expression test base on absolute counts differences}
 \usage{
-genAFold(nncounts, cond, preval = 0.05, qforkappa = 0, priorgenesd)
+genAFold(nncounts, cond, preval = 0.05, qforkappa = 0, pair = FALSE,
+  priorgenesd)
 }
 \arguments{
 \item{nncounts}{matrix for read count.}
@@ -15,10 +16,12 @@ genAFold(nncounts, cond, preval = 0.05, qforkappa = 0, priorgenesd)
 
 \item{qforkappa}{quantile for estimating kappa(>=qforkappa), default is 0 (without trimming of data). Please set up a value in [0,1) if you want to trim the low expressed data.}
 
+\item{pair}{switch for paired samples, default is false}
+
 \item{priorgenesd}{prior value  for general SD of fold change, if provided, the estimation of general SD will be replaced by this value.}
 }
 \value{
-A list with log2 foldchange, general SD for calculating pvalue, variance stabilized counts and expression level adjusted counts (used for PCA analysis).
+A list with log2 foldchange, general SD for calculating pvalue, variance stabilized counts and expression level adjusted counts (used for PCA analysis)
 }
 \description{
 Calculate aFold for each gene and general sd

@@ -712,6 +712,7 @@ preAFold <- function(svar,smean,amean,bmean,sunc,size,preval=0.05,qforkappa=0,..
 #' @param cond factor for conditions. If provide only one condition, fold-change estimation will be suppressed. 
 #' @param preval pre-defined scale control for variance normalization, default is 0.05, a large value generally increases the fold-changes (decreases penalty of variances) under low expression.
 #' @param qforkappa quantile for estimating kappa(>=qforkappa), default is 0 (without trimming of data). Please set up a value in [0,1) if you want to trim the low expressed data.
+#' @param pair switch for paired samples, default is false
 #' @param priorgenesd prior value  for general SD of fold change, if provided, the estimation of general SD will be replaced by this value.
 #' @return A list with log2 foldchange, general SD for calculating pvalue, variance stabilized counts and expression level adjusted counts (used for PCA analysis)
 #' 
@@ -726,7 +727,7 @@ preAFold <- function(svar,smean,amean,bmean,sunc,size,preval=0.05,qforkappa=0,..
 #' hist(aFold[[1]])
 #'
 #' @export
-genAFold <- function(nncounts,cond,preval=0.05,qforkappa=0,priorgenesd) {
+genAFold <- function(nncounts,cond,preval=0.05,qforkappa=0,pair=FALSE,priorgenesd) {
   if(is.null(ncol(nncounts)))
   {
     stop("Please input a matrix as nncounts!")
@@ -753,7 +754,9 @@ genAFold <- function(nncounts,cond,preval=0.05,qforkappa=0,priorgenesd) {
   if(n1<2 &&n2<2)
   {
     message("No replicates! Use Poisson as default!")
+    if(pair) stop("For paired samples, please provide at least two replicates for each group!")
   }
+  if(pair && n1!=n2) stop("For paired samples, please provide same number of replicates for each group!")
   AAmean <- 0
   AAvar <- 0
   ind <- rowSums(nncounts)>0
@@ -800,6 +803,24 @@ genAFold <- function(nncounts,cond,preval=0.05,qforkappa=0,priorgenesd) {
   varunca <- 0
   varuncb <- 0
   varuncc <- 0
+  if(pair)
+  {
+    varuncc <- apply(nncounts[,gr2]-nncounts[,gr1],1,var)
+    Ameans <- AAmean^2
+    Bmeans <- BBmean^2
+    summean<- pmax(1,Ameans+Bmeans)
+    AAvars <- pmin(AAvar,varuncc*Ameans/summean)
+    BBvars <- pmin(BBvar,varuncc*Bmeans/summean)
+    AAvars<-pmax(AAvars,AAmean)
+    asiz <- sqrt(AAvars)/AAmean
+    asiz[AAmean<=0]<-0
+    varunca <- sqrt(AAvars)*(1+asiz)
+    BBvars<-pmax(BBvars,BBmean)
+    bsiz <- sqrt(BBvars)/BBmean
+    bsiz[BBmean<=0]<-0
+    varuncb <- sqrt(BBvars)*(1+bsiz)
+    varuncc <- varunca+varuncb
+  }
   AAvar<-pmax(AAvar,AAmean)
   asiz <- sqrt(AAvar)/AAmean
   asiz[AAmean<=0]<-0
@@ -824,6 +845,7 @@ genAFold <- function(nncounts,cond,preval=0.05,qforkappa=0,priorgenesd) {
   hideunc <- preAFold(tvar,tmean,AAmean,BBmean,varund,max(n1,n2),preval,qforkappa)
   precut <- hideunc[[2]]
   varunc <- varunca+varuncb+hideunc[[1]]
+  if(pair) varunc <- varuncc+hideunc[[1]]
   totunc <- pmax(varunc,1.0e-9)
   scounts <- nncounts+totunc
   scounts <- log2(scounts)
@@ -1020,7 +1042,7 @@ callParameter <- function(object,replaceOutliers=TRUE,...) {
   #excounts(object)=nncounts+ggad
   ###moderate fold-change
   
-  afoldpara <- genAFold(nncounts,igroups,...)
+  afoldpara <- genAFold(nncounts,igroups,pair=paired(object),...)
   object[["genesd"]] <- afoldpara[[2]]
   object[["foldChange"]] <- afoldpara[[1]]
   ###paired
